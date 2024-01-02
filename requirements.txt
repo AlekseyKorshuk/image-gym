@@ -1,0 +1,8 @@
+diffusers
+accelerate>=0.16.0
+torchvision
+transformers>=4.21.0
+datasets
+ftfy
+tensorboard
+Jinja2
