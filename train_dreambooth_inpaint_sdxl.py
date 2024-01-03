@@ -41,7 +41,7 @@ check_min_version("0.13.0.dev0")
 logger = get_logger(__name__)
 
 
-def prepare_mask_and_masked_image(image, mask):
+def prepare_mask_and_masked_image_old(image, mask):
     image = np.array(image.convert("RGB"))
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
@@ -57,6 +57,33 @@ def prepare_mask_and_masked_image(image, mask):
     # mask = mask[0]
     # masked_image = masked_image[0]
     # print("SHAPE", mask.shape, masked_image.shape)
+    return mask, masked_image
+
+
+def prepare_mask_and_masked_image(original_image, mask_image):
+    """
+    Prepares the mask and masked image for further processing with PyTorch, ensuring that the mask is binary and the
+    masked image has the masked area greyed out.
+    """
+    # Apply the mask to the image using the previously defined function
+    result_image = apply_mask(original_image, mask_image)
+
+    # Convert to numpy and make adjustments for PyTorch tensor compatibility
+    image = np.array(result_image.convert("RGB"))
+    image = image.transpose(2, 0, 1).astype(np.float32)
+    image = torch.from_numpy(image) / 127.5 - 1.0
+
+    mask = np.array(mask_image.convert("L"))
+    mask = mask.astype(np.float32) / 255.0
+    mask = np.where(mask < 0.5, 0.0, 1.0)
+    mask = torch.from_numpy(mask).unsqueeze(0)
+
+    masked_image = image * (mask < 0.5).float()
+
+    # Unsqueeze to add the batch dimension
+    mask = mask.unsqueeze(0)
+    masked_image = masked_image.unsqueeze(0)
+
     return mask, masked_image
 
 
@@ -619,14 +646,34 @@ def main():
             images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
             mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
 
-            examples["pixel_values"] = [image_transforms(image) for image in images]
-            examples["instance_images"] = [
-                image_transforms(apply_mask(pil_image, mask_image))
+            pairs = [
+                prepare_mask_and_masked_image(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
-            examples["instance_masks"] = [image_transforms(mask_image) for mask_image in mask_images]
+            # mask_images =
+            # images =
+
+            # instance_masks = [conditioning_image_transforms(image) for image in images]
+            # instance_images = [image_transforms(mask_image) for mask_image in mask_images]
+
+            examples["pixel_values"] = [image_transforms(image) for image in images]
+            examples["instance_images"] = [pair[1] for pair in pairs]
+            examples["instance_masks"] = [pair[0] for pair in mask_images]
 
             return examples
+
+        # def preprocess_train(examples):
+        #     images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
+        #     mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
+        #
+        #     examples["pixel_values"] = [image_transforms(image) for image in images]
+        #     examples["instance_images"] = [
+        #         image_transforms(apply_mask(pil_image, mask_image))
+        #         for pil_image, mask_image in zip(images, mask_images)
+        #     ]
+        #     examples["instance_masks"] = [image_transforms(mask_image) for mask_image in mask_images]
+        #
+        #     return examples
 
         with accelerator.main_process_first():
             dataset = dataset.with_transform(preprocess_train)
