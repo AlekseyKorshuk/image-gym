@@ -110,6 +110,13 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--pretrained_vae_model_name_or_path",
+        type=str,
+        default="madebyollin/sdxl-vae-fp16-fix",
+        required=False,
+        help="Path to pretrained vae or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
         "--revision",
         type=str,
         default=None,
