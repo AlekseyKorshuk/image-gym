@@ -326,14 +326,12 @@ def import_model_class_from_model_name_or_path(
 
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
+def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
     prompt_embeds_list = []
 
     captions = []
     for caption in prompt_batch:
-        if random.random() < proportion_empty_prompts:
-            captions.append("")
-        elif isinstance(caption, str):
+        if isinstance(caption, str):
             captions.append(caption)
         elif isinstance(caption, (list, np.ndarray)):
             # take a random caption if there are multiple
@@ -533,14 +531,14 @@ def main():
 
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
-    def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
+    def compute_embeddings(batch, text_encoders, tokenizers, is_train=True):
         original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         prompt_batch = batch["text"]
 
         prompt_embeds, pooled_prompt_embeds = encode_prompt(
-            prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
+            prompt_batch, text_encoders, tokenizers, is_train
         )
         add_text_embeds = pooled_prompt_embeds
 
@@ -564,7 +562,6 @@ def main():
         compute_embeddings,
         text_encoders=text_encoders,
         tokenizers=tokenizers,
-        proportion_empty_prompts=args.proportion_empty_prompts,
     )
     with accelerator.main_process_first():
         dataset = load_dataset(args.dataset_path, split="train")
