@@ -612,7 +612,7 @@ def main():
             instance_masks = [conditioning_image_transforms(image) for image in images]
             instance_images = [image_transforms(mask_image) for mask_image in mask_images]
 
-            examples["pixel_values"] = images
+            examples["pixel_values"] = instance_images
             examples["PIL_images"] = images
             examples["PIL_masks"] = mask_images
             examples["instance_masks"] = instance_masks
