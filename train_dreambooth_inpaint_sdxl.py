@@ -494,7 +494,8 @@ def main():
         variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant,
+        in_channels=9
     )
 
     vae.requires_grad_(False)
