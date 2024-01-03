@@ -632,7 +632,7 @@ def main():
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-        masked_images = torch.stack([example["instance_masks"] for example in examples])
+        masked_images = torch.stack([example["instance_images"] for example in examples])
         masked_images = masked_images.to(memory_format=torch.contiguous_format).float()
 
         prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
