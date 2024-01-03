@@ -648,7 +648,7 @@ def main():
 
             examples["pixel_values"] = [image_transforms(image) for image in images]
             examples["instance_images"] = [pair[1] for pair in pairs]
-            examples["instance_masks"] = [pair[0] for pair in mask_images]
+            examples["instance_masks"] = [pair[0] for pair in pairs]
 
             return examples
 
