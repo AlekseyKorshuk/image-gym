@@ -54,9 +54,9 @@ def prepare_mask_and_masked_image(image, mask):
     mask = torch.from_numpy(mask)
 
     masked_image = image * (mask < 0.5)
-    mask = mask[0]
-    masked_image = masked_image[0]
-    print("SHAPE", mask.shape, masked_image.shape)
+    # mask = mask[0]
+    # masked_image = masked_image[0]
+    # print("SHAPE", mask.shape, masked_image.shape)
     return mask, masked_image
 
 
@@ -609,15 +609,15 @@ def main():
                 prepare_mask_and_masked_image(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
-            images = [pair[1]for pair in pairs]
-            mask_images = [pair[0] for pair in pairs]
+            # mask_images =
+            # images =
 
             # instance_masks = [conditioning_image_transforms(image) for image in images]
             # instance_images = [image_transforms(mask_image) for mask_image in mask_images]
 
-            examples["pixel_values"] = images
-            examples["instance_masks"] = mask_images
-            examples["instance_images"] = images
+            examples["pixel_values"] = [image_transforms(image) for image in images]
+            examples["instance_images"] = [pair[1]for pair in pairs]
+            examples["instance_masks"] = [pair[0] for pair in pairs]
 
             return examples
 
