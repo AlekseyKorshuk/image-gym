@@ -496,7 +496,8 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant,
         in_channels=9,
-        ignore_mismatched_sizes=True
+        ignore_mismatched_sizes=True,
+        low_cpu_mem_usage=False
     )
 
     vae.requires_grad_(False)
