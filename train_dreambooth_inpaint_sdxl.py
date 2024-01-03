@@ -59,7 +59,7 @@ def prepare_mask_and_masked_image(image, mask):
 
 
 def tensor_to_pil(tensor):
-    return T.ToPILImage()(tensor)
+    return T.ToPILImage()(tensor[0])
     # # Reverse the normalization
     # tensor = (tensor + 1) * 127.5
     # tensor = tensor.clamp(0, 255)
