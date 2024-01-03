@@ -621,10 +621,10 @@ def main():
 
             examples["pixel_values"] = [image_transforms(image) for image in images]
             examples["instance_images"] = [
-                apply_mask(pil_image, mask_image)
+                image_transforms(apply_mask(pil_image, mask_image))
                 for pil_image, mask_image in zip(images, mask_images)
             ]
-            examples["instance_masks"] = mask_images
+            examples["instance_masks"] = [image_transforms(mask_image) for mask_image in mask_images]
 
             return examples
 
