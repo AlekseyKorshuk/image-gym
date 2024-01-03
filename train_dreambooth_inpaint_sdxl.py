@@ -23,6 +23,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers import AutoTokenizer, PretrainedConfig
+import torchvision.transforms as T
 
 from diffusers import (
     AutoencoderKL,
@@ -58,21 +59,22 @@ def prepare_mask_and_masked_image(image, mask):
 
 
 def tensor_to_pil(tensor):
-    # Reverse the normalization
-    tensor = (tensor + 1) * 127.5
-    tensor = tensor.clamp(0, 255)
-
-    # Convert to numpy array
-    array = tensor.detach().cpu().numpy()
-
-    # Transpose to make it in HxWxC format
-    array = array.transpose(1, 2, 0)
-
-    # Convert to uint8
-    array = array.astype(np.uint8)
-
-    # Convert to PIL Image
-    return Image.fromarray(array)
+    return T.ToPILImage()(tensor)
+    # # Reverse the normalization
+    # tensor = (tensor + 1) * 127.5
+    # tensor = tensor.clamp(0, 255)
+    #
+    # # Convert to numpy array
+    # array = tensor.detach().cpu().numpy()
+    #
+    # # Transpose to make it in HxWxC format
+    # array = array.transpose(1, 2, 0)
+    #
+    # # Convert to uint8
+    # array = array.astype(np.uint8)
+    #
+    # # Convert to PIL Image
+    # return Image.fromarray(array)
 
 
 # generate random masks
@@ -604,8 +606,8 @@ def main():
                 prepare_mask_and_masked_image(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
-            images = [pair[0] for pair in pairs]
-            mask_images = [pair[1] for pair in pairs]
+            images = [tensor_to_pil(pair[0]) for pair in pairs]
+            mask_images = [tensor_to_pil(pair[1]) for pair in pairs]
 
             instance_masks = [conditioning_image_transforms(image) for image in images]
             instance_images = [image_transforms(mask_image) for mask_image in mask_images]
