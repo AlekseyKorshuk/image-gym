@@ -60,42 +60,32 @@ def prepare_mask_and_masked_image_old(image, mask):
     return mask, masked_image
 
 
-def prepare_mask_and_masked_image(original_image, mask_image):
+def prepare_mask_and_masked_image(original_image, mask_image, mask_color='white'):
     """
-    Prepares the mask and masked image for further processing with PyTorch, ensuring that the mask is binary and the
-    masked image has the masked area greyed out.
+    Adjusts the 'prepare_mask_and_masked_image' function to use the 'apply_mask' function,
+    ensuring compatibility and consistency in the output image.
     """
-    # Apply the mask to the image using the previously defined function
-    result_image = apply_mask(original_image, mask_image)
+    # Convert the mask image to a binary mask tensor
+    mask_tensor = torch.from_numpy(np.array(mask_image.convert("L"))).float() / 255.0
+    mask_tensor = torch.where(mask_tensor < 0.5, torch.zeros_like(mask_tensor), torch.ones_like(mask_tensor))
 
-    # Convert to numpy and make adjustments for PyTorch tensor compatibility
-    image = np.array(result_image.convert("RGB"))
-    image = image.transpose(2, 0, 1).astype(np.float32)
-    image = torch.from_numpy(image) / 127.5 - 1.0
+    # Create a grey image tensor
+    grey_tensor = torch.full_like(mask_tensor, 128)  # Grey value
+    grey_tensor = grey_tensor.repeat(3, 1, 1)  # Repeat for RGB channels
 
-    mask = np.array(mask_image.convert("L"))
-    mask = mask.astype(np.float32) / 255.0
-    mask = np.where(mask < 0.5, 0.0, 1.0)
-    mask = torch.from_numpy(mask).unsqueeze(0)
+    # Convert the original image to tensor
+    original_tensor = torch.from_numpy(np.array(original_image.convert("RGB"))).float()
+    original_tensor = original_tensor.permute(2, 0, 1)  # Permute to CxHxW
 
-    masked_image = image * (mask < 0.5).float()
+    # Apply the binary mask to the image tensor, replacing masked area with grey
+    masked_image_tensor = torch.where(mask_tensor == 1, grey_tensor,
+                                      original_tensor)  # Replace with grey where mask is 1
 
-    # Unsqueeze to add the batch dimension
-    mask = mask.unsqueeze(0)
-    masked_image = masked_image.unsqueeze(0)
+    # Add batch dimension
+    mask_tensor = mask_tensor.unsqueeze(0)
+    masked_image_tensor = masked_image_tensor.unsqueeze(0)
 
-    return mask, masked_image
-
-
-def apply_mask(original_image, mask_image, mask_color='white'):
-    mask_array = np.array(mask_image)[:, :, 0]
-    mask = mask_array > 0 if mask_color == 'white' else mask_array == 0
-    grey_image = Image.new("RGB", original_image.size, color=(128, 128, 128))
-    original_array = np.array(original_image)
-    grey_array = np.array(grey_image)
-    result_array = np.where(mask[:, :, None], grey_array, original_array)
-    result_image = Image.fromarray(result_array)
-    return result_image
+    return mask_tensor, masked_image_tensor
 
 
 def tensor_to_pil(tensor):
