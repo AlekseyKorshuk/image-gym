@@ -54,7 +54,7 @@ def prepare_mask_and_masked_image(image, mask):
     mask = torch.from_numpy(mask)
 
     masked_image = image * (mask < 0.5)
-
+    print("SHAPE", mask.shape, masked_image.shape)
     return mask, masked_image
 
 
