@@ -60,6 +60,17 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
+def apply_mask(original_image, mask_image, mask_color='white'):
+    mask_array = np.array(mask_image)[:, :, 0]
+    mask = mask_array > 0 if mask_color == 'white' else mask_array == 0
+    grey_image = Image.new("RGB", original_image.size, color=(128, 128, 128))
+    original_array = np.array(original_image)
+    grey_array = np.array(grey_image)
+    result_array = np.where(mask[:, :, None], grey_array, original_array)
+    result_image = Image.fromarray(result_array)
+    return result_image
+
+
 def tensor_to_pil(tensor):
     return T.ToPILImage()(tensor[0])
     # # Reverse the normalization
@@ -608,19 +619,12 @@ def main():
             images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
             mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
 
-            pairs = [
-                prepare_mask_and_masked_image(pil_image, mask_image)
+            examples["pixel_values"] = [image_transforms(image) for image in images]
+            examples["instance_images"] = [
+                apply_mask(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
-            # mask_images =
-            # images =
-
-            # instance_masks = [conditioning_image_transforms(image) for image in images]
-            # instance_images = [image_transforms(mask_image) for mask_image in mask_images]
-
-            examples["pixel_values"] = [image_transforms(image) for image in images]
-            examples["instance_images"] = [pair[1]for pair in pairs]
-            examples["instance_masks"] = [pair[0] for pair in pairs]
+            examples["instance_masks"] = mask_images
 
             return examples
 
