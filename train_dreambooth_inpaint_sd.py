@@ -570,7 +570,6 @@ def main():
                 masked_latents = vae.encode(
                     batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
                 ).latent_dist.sample()
-                raise Exception()
                 masked_latents = masked_latents * vae.config.scaling_factor
 
                 masks = batch["masks"]

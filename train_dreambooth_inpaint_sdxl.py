@@ -753,6 +753,8 @@ def main():
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
 
+                print("masked_images", batch["masked_images"].shape)
+                print("pixel_values", batch["pixel_values"].shape)
                 # Convert masked images to latent space
                 masked_latents = vae.encode(
                     batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
