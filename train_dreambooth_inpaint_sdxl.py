@@ -41,7 +41,7 @@ check_min_version("0.13.0.dev0")
 logger = get_logger(__name__)
 
 
-def prepare_mask_and_masked_image_old(image, mask):
+def prepare_mask_and_masked_image(image, mask):
     image = np.array(image.convert("RGB"))
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
@@ -60,7 +60,7 @@ def prepare_mask_and_masked_image_old(image, mask):
     return mask, masked_image
 
 
-def prepare_mask_and_masked_image(original_image, mask_image, mask_color='white'):
+def prepare_mask_and_masked_image_new(original_image, mask_image, mask_color='white'):
     """
     Adjusts the 'prepare_mask_and_masked_image' function to use the 'apply_mask' function,
     ensuring compatibility and consistency in the output image.
