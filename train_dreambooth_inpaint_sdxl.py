@@ -607,17 +607,15 @@ def main():
                 prepare_mask_and_masked_image(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
-            images = [tensor_to_pil(pair[0]) for pair in pairs]
-            mask_images = [tensor_to_pil(pair[1]) for pair in pairs]
+            images = [pair[0]for pair in pairs]
+            mask_images = [pair[1] for pair in pairs]
 
-            instance_masks = [conditioning_image_transforms(image) for image in images]
-            instance_images = [image_transforms(mask_image) for mask_image in mask_images]
+            # instance_masks = [conditioning_image_transforms(image) for image in images]
+            # instance_images = [image_transforms(mask_image) for mask_image in mask_images]
 
-            examples["pixel_values"] = instance_images
-            examples["PIL_images"] = images
-            examples["PIL_masks"] = mask_images
-            examples["instance_masks"] = instance_masks
-            examples["instance_images"] = instance_images
+            examples["pixel_values"] = images
+            examples["instance_masks"] = mask_images
+            examples["instance_images"] = images
 
             return examples
 
