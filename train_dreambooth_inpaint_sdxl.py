@@ -1,4 +1,6 @@
 import argparse
+import functools
+import gc
 import itertools
 import math
 import os
@@ -20,12 +22,13 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import AutoTokenizer, PretrainedConfig
 
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
-    StableDiffusionInpaintPipeline,
-    StableDiffusionPipeline,
+    StableDiffusionXLInpaintPipeline,
+    StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
@@ -54,6 +57,24 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
+def tensor_to_pil(tensor):
+    # Reverse the normalization
+    tensor = (tensor + 1) * 127.5
+    tensor = tensor.clamp(0, 255)
+
+    # Convert to numpy array
+    array = tensor.detach().cpu().numpy()
+
+    # Transpose to make it in HxWxC format
+    array = array.transpose(1, 2, 0)
+
+    # Convert to uint8
+    array = array.astype(np.uint8)
+
+    # Convert to PIL Image
+    return Image.fromarray(array)
+
+
 # generate random masks
 def random_mask(im_shape, ratio=1, mask_full_image=False):
     mask = Image.new("L", im_shape, 0)
@@ -77,48 +98,6 @@ def random_mask(im_shape, ratio=1, mask_full_image=False):
         )
 
     return mask
-
-
-def tokenize_prompt(tokenizer, prompt, add_special_tokens=False):
-    text_inputs = tokenizer(
-        prompt,
-        padding="max_length",
-        max_length=tokenizer.model_max_length,
-        truncation=True,
-        add_special_tokens=add_special_tokens,
-        return_tensors="pt",
-    )
-    text_input_ids = text_inputs.input_ids
-    return text_input_ids
-
-
-# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
-    prompt_embeds_list = []
-
-    for i, text_encoder in enumerate(text_encoders):
-        if tokenizers is not None:
-            tokenizer = tokenizers[i]
-            text_input_ids = tokenize_prompt(tokenizer, prompt)
-        else:
-            assert text_input_ids_list is not None
-            text_input_ids = text_input_ids_list[i]
-
-        prompt_embeds = text_encoder(
-            text_input_ids.to(text_encoder.device),
-            output_hidden_states=True,
-        )
-
-        # We are only ALWAYS interested in the pooled output of the final text encoder
-        pooled_prompt_embeds = prompt_embeds[0]
-        prompt_embeds = prompt_embeds.hidden_states[-2]
-        bs_embed, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
-        prompt_embeds_list.append(prompt_embeds)
-
-    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
-    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-    return prompt_embeds, pooled_prompt_embeds
 
 
 def parse_args():
@@ -160,6 +139,18 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--crops_coords_top_left_h",
+        type=int,
+        default=0,
+        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
+    )
+    parser.add_argument(
+        "--crops_coords_top_left_w",
+        type=int,
+        default=0,
+        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -168,7 +159,6 @@ def parse_args():
             " cropped. The images will be resized to the resolution first before cropping."
         ),
     )
-    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
@@ -295,6 +285,67 @@ def parse_args():
     return args
 
 
+def import_model_class_from_model_name_or_path(
+        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+):
+    text_encoder_config = PretrainedConfig.from_pretrained(
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
+    )
+    model_class = text_encoder_config.architectures[0]
+
+    if model_class == "CLIPTextModel":
+        from transformers import CLIPTextModel
+
+        return CLIPTextModel
+    elif model_class == "CLIPTextModelWithProjection":
+        from transformers import CLIPTextModelWithProjection
+
+        return CLIPTextModelWithProjection
+    else:
+        raise ValueError(f"{model_class} is not supported.")
+
+
+# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
+def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
+    prompt_embeds_list = []
+
+    captions = []
+    for caption in prompt_batch:
+        if random.random() < proportion_empty_prompts:
+            captions.append("")
+        elif isinstance(caption, str):
+            captions.append(caption)
+        elif isinstance(caption, (list, np.ndarray)):
+            # take a random caption if there are multiple
+            captions.append(random.choice(caption) if is_train else caption[0])
+
+    with torch.no_grad():
+        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+            text_inputs = tokenizer(
+                captions,
+                padding="max_length",
+                max_length=tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids
+            prompt_embeds = text_encoder(
+                text_input_ids.to(text_encoder.device),
+                output_hidden_states=True,
+            )
+
+            # We are only ALWAYS interested in the pooled output of the final text encoder
+            pooled_prompt_embeds = prompt_embeds[0]
+            prompt_embeds = prompt_embeds.hidden_states[-2]
+            bs_embed, seq_len, _ = prompt_embeds.shape
+            prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
+            prompt_embeds_list.append(prompt_embeds)
+
+    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
+    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
+    return prompt_embeds, pooled_prompt_embeds
+
+
 class DreamBoothDataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
@@ -303,15 +354,14 @@ class DreamBoothDataset(Dataset):
 
     def __init__(
             self,
-            dataset_path,
+            dataset,
             size=512,
             center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
-        self.tokenizer = tokenizer
 
-        self.dataset = load_dataset(dataset_path, split="train")
+        self.dataset = dataset
         self._length = len(self.dataset)
 
         self.image_transforms_resize_and_crop = transforms.Compose(
@@ -349,30 +399,6 @@ class DreamBoothDataset(Dataset):
         example["PIL_masks"] = instance_mask
         example["instance_masks"] = self.image_transforms(instance_mask)
 
-        example["instance_prompt_ids"] = self.tokenizer(
-            sample["text"],
-            padding="do_not_pad",
-            truncation=True,
-            max_length=self.tokenizer.model_max_length,
-        ).input_ids
-
-        return example
-
-
-class PromptDataset(Dataset):
-    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
-
-    def __init__(self, prompt, num_samples):
-        self.prompt = prompt
-        self.num_samples = num_samples
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, index):
-        example = {}
-        example["prompt"] = self.prompt
-        example["index"] = index
         return example
 
 
@@ -391,15 +417,6 @@ def main():
         project_config=project_config,
     )
 
-    # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
-    # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
-    # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
-    if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
-        raise ValueError(
-            "Gradient accumulation is not supported when training the text encoder in distributed training. "
-            "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
-        )
-
     if args.seed is not None:
         set_seed(args.seed)
 
@@ -413,41 +430,57 @@ def main():
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    tokenizer_one = CLIPTokenizer.from_pretrained(
+    # Load the tokenizers
+    tokenizer_one = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         revision=args.revision,
-        variant=args.variant,
         use_fast=False,
     )
-    tokenizer_two = CLIPTokenizer.from_pretrained(
+    tokenizer_two = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_2",
         revision=args.revision,
-        variant=args.variant,
         use_fast=False,
     )
 
-    # Load models and create wrapper for stable diffusion
-    text_encoder_one = CLIPTextModel.from_pretrained(
+    # import correct text encoder classes
+    text_encoder_cls_one = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision
+    )
+    text_encoder_cls_two = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
+    )
+
+    # Load scheduler and models
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
-    text_encoder_two = CLIPTextModel.from_pretrained(
+    text_encoder_two = text_encoder_cls_two.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    vae_path = (
+        args.pretrained_model_name_or_path
+        if args.pretrained_vae_model_name_or_path is None
+        else args.pretrained_vae_model_name_or_path
+    )
+    vae = AutoencoderKL.from_pretrained(
+        vae_path,
+        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+        revision=args.revision,
+        variant=args.variant,
+    )
+    unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+    )
 
     vae.requires_grad_(False)
-    if not args.train_text_encoder:
-        text_encoder_one.requires_grad_(False)
-        text_encoder_two.requires_grad_(False)
+    text_encoder_one.requires_grad_(False)
+    text_encoder_two.requires_grad_(False)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
-        if args.train_text_encoder:
-            text_encoder_one.gradient_checkpointing_enable()
-            text_encoder_two.gradient_checkpointing_enable()
 
     if args.scale_lr:
         args.learning_rate = (
@@ -467,10 +500,7 @@ def main():
     else:
         optimizer_class = torch.optim.AdamW
 
-    params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder_one.parameters(), text_encoder_two.parameters())
-        if args.train_text_encoder else unet.parameters()
-    )
+    params_to_optimize = (unet.parameters())
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -481,39 +511,122 @@ def main():
 
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
-    train_dataset = DreamBoothDataset(
-        dataset_path=args.dataset_path,
-        tokenizer=tokenizer,
-        size=args.resolution,
-        center_crop=args.center_crop,
+    # Here, we compute not just the text embeddings but also the additional embeddings
+    # needed for the SD XL UNet to operate.
+    def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
+        original_size = (args.resolution, args.resolution)
+        target_size = (args.resolution, args.resolution)
+        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
+        prompt_batch = batch["text"]
+
+        prompt_embeds, pooled_prompt_embeds = encode_prompt(
+            prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
+        )
+        add_text_embeds = pooled_prompt_embeds
+
+        # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+        add_time_ids = torch.tensor([add_time_ids])
+
+        prompt_embeds = prompt_embeds.to(accelerator.device)
+        add_text_embeds = add_text_embeds.to(accelerator.device)
+        add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
+        add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
+        unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
+
+    # Let's first compute all the embeddings so that we can free up the text encoders
+    # from memory.
+    text_encoders = [text_encoder_one, text_encoder_two]
+    tokenizers = [tokenizer_one, tokenizer_two]
+    compute_embeddings_fn = functools.partial(
+        compute_embeddings,
+        text_encoders=text_encoders,
+        tokenizers=tokenizers,
+        proportion_empty_prompts=args.proportion_empty_prompts,
     )
+    with accelerator.main_process_first():
+        dataset = load_dataset(args.dataset_path, split="train")
+        from datasets.fingerprint import Hasher
+
+        # fingerprint used by the cache for the other processes to load the result
+        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
+        new_fingerprint = Hasher.hash(args)
+        train_dataset = dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+
+    del text_encoders, tokenizers
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    def prepare_train_dataset(dataset, accelerator):
+        resize_and_crop_transforms = transforms.Compose(
+            [
+                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(args.resolution),
+            ]
+        )
+        image_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+
+        conditioning_image_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+            ]
+        )
+
+        def preprocess_train(examples):
+            images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
+            mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
+
+            pairs = [
+                prepare_mask_and_masked_image(pil_image, mask_image)
+                for pil_image, mask_image in zip(images, mask_images)
+            ]
+            images = [tensor_to_pil(pair[0]) for pair in pairs]
+            mask_images = [tensor_to_pil(pair[1]) for pair in pairs]
+
+            instance_masks = [conditioning_image_transforms(image) for image in images]
+            instance_images = [image_transforms(mask_image) for mask_image in mask_images]
+
+            examples["pixel_values"] = images
+            examples["PIL_images"] = images
+            examples["PIL_masks"] = mask_images
+            examples["instance_masks"] = instance_masks
+            examples["instance_images"] = instance_images
+
+            return examples
+
+        with accelerator.main_process_first():
+            dataset = dataset.with_transform(preprocess_train)
+
+        return dataset
+
+    train_dataset = prepare_train_dataset(train_dataset, accelerator)
 
     def collate_fn(examples):
-        input_ids = [example["instance_prompt_ids"] for example in examples]
-        pixel_values = [example["instance_images"] for example in examples]
-
-        masks = []
-        masked_images = []
-        for example in examples:
-            pil_image = example["PIL_images"]
-            mask = example["PIL_masks"]
-            # prepare mask and masked image
-            mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
-
-            masks.append(mask)
-            masked_images.append(masked_image)
-
-        pixel_values = torch.stack(pixel_values)
+        pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-        input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
-        tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, add_special_tokens)
-        tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt, add_special_tokens)
+        masked_images = torch.stack([example["instance_masks"] for example in examples])
+        masked_images = masked_images.to(memory_format=torch.contiguous_format).float()
 
-        masks = torch.stack(masks)
-        masked_images = torch.stack(masked_images)
-        batch = {"input_ids": input_ids, "pixel_values": pixel_values, "masks": masks, "masked_images": masked_images}
-        return batch
+        prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
+
+        add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
+        add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
+
+        return {
+            "masks": torch.stack([example["instance_masks"] for example in examples]),
+            "pixel_values": pixel_values,
+            "masked_images": masked_images,
+            "prompt_ids": prompt_ids,
+            "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
+        }
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
@@ -533,14 +646,9 @@ def main():
         num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
 
-    if args.train_text_encoder:
-        unet, text_encoder_one, text_encoder_two, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder_one, text_encoder_two, optimizer, train_dataloader, lr_scheduler
-        )
-    else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, optimizer, train_dataloader, lr_scheduler
-        )
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, train_dataloader, lr_scheduler
+    )
     accelerator.register_for_checkpointing(lr_scheduler)
 
     weight_dtype = torch.float32
@@ -553,9 +661,8 @@ def main():
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
     vae.to(accelerator.device, dtype=weight_dtype)
-    if not args.train_text_encoder:
-        text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-        text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -568,34 +675,6 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         accelerator.init_trackers("dreambooth", config=vars(args))
-
-    if not args.train_text_encoder:
-        tokenizers = [tokenizer_one, tokenizer_two]
-        text_encoders = [text_encoder_one, text_encoder_two]
-
-        def compute_text_embeddings(prompt, text_encoders, tokenizers):
-            with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
-                prompt_embeds = prompt_embeds.to(accelerator.device)
-                pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
-            return prompt_embeds, pooled_prompt_embeds
-
-    def compute_time_ids():
-        # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        original_size = (args.resolution, args.resolution)
-        target_size = (args.resolution, args.resolution)
-        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
-        add_time_ids = list(original_size + crops_coords_top_left + target_size)
-        add_time_ids = torch.tensor([add_time_ids])
-        add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
-        return add_time_ids
-
-    # Handle instance prompt.
-    instance_time_ids = compute_time_ids()
-    add_time_ids = instance_time_ids
-
-
-    # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -684,47 +763,12 @@ def main():
                 # concatenate the noised latents with the mask and the masked latents
                 latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
 
-                # Get the text embedding for conditioning
-                # encoder_hidden_states = text_encoder(batch["input_ids"])[0]
-
-                elems_to_repeat_text_embeds = 1
-                elems_to_repeat_time_ids = bsz
-
-                if not args.train_text_encoder:
-                    instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
-                        args.instance_prompt, [text_encoder_one, text_encoder_two], [tokenizer_one, tokenizer_two]
-                    )
-                    unet_added_conditions = {
-                        "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
-                        "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
-                    }
-                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
-                    noise_pred = unet(
-                        latent_model_input,
-                        timesteps,
-                        prompt_embeds_input,
-                        added_cond_kwargs=unet_added_conditions,
-                    ).sample
-                else:
-                    pass
-                    # unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
-                    # prompt_embeds, pooled_prompt_embeds = encode_prompt(
-                    #     text_encoders=[text_encoder_one, text_encoder_two],
-                    #     tokenizers=None,
-                    #     prompt=None,
-                    #     text_input_ids_list=[tokens_one, tokens_two],
-                    # )
-                    # unet_added_conditions.update(
-                    #     {"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)}
-                    # )
-                    # prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
-                    # noise_pred = unet(
-                    #     latent_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
-                    # ).sample
-
                 # Predict the noise residual
-                # noise_pred = unet(latent_model_input, timesteps, encoder_hidden_states,
-                #                   added_cond_kwargs=unet_added_conditions).sample
+                noise_pred = unet(
+                    latent_model_input, timesteps,
+                    encoder_hidden_states=batch["prompt_ids"],
+                    added_cond_kwargs=batch["unet_added_conditions"],
+                ).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -738,11 +782,7 @@ def main():
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain(unet.parameters(), text_encoder.parameters())
-                        if args.train_text_encoder
-                        else unet.parameters()
-                    )
+                    params_to_clip = (unet.parameters())
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -770,10 +810,24 @@ def main():
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        pipeline = StableDiffusionInpaintPipeline.from_pretrained(
+        text_encoder_one = text_encoder_cls_one.from_pretrained(
             args.pretrained_model_name_or_path,
+            subfolder="text_encoder",
+            revision=args.revision,
+            variant=args.variant,
+        )
+        text_encoder_two = text_encoder_cls_two.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="text_encoder_2",
+            revision=args.revision,
+            variant=args.variant,
+        )
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            vae=vae,
             unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder),
+            text_encoder=accelerator.unwrap_model(text_encoder_one),
+            text_encoder_2=accelerator.unwrap_model(text_encoder_two),
         )
         pipeline.save_pretrained(args.output_dir)
 
