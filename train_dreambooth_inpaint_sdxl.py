@@ -609,7 +609,7 @@ def main():
             compute_embeddings_fn,
             batched=True,
             new_fingerprint=new_fingerprint,
-            num_proc=os.cpu_count()
+            # num_proc=os.cpu_count()
         )
 
     del text_encoders, tokenizers
