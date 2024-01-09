@@ -650,9 +650,9 @@ def main():
         train_dataset = dataset.map(
             compute_embeddings_fn,
             batched=True,
-            batch_size=4,
             new_fingerprint=new_fingerprint,
-            num_proc=min(os.cpu_count(), 32)
+            # batch_size=4,
+            # num_proc=min(os.cpu_count(), 32)
         )
 
     # del text_encoders, tokenizers
