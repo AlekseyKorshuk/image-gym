@@ -810,6 +810,18 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
+    if accelerator.is_main_process:
+        with torch.cuda.amp.autocast():
+            pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                vae=vae,
+                unet=accelerator.unwrap_model(unet),
+                text_encoder=accelerator.unwrap_model(text_encoder_one),
+                text_encoder_2=accelerator.unwrap_model(text_encoder_two),
+            )
+            generation_logs = run_generation(pipeline, eval_dataset)
+            accelerator.log({"generations": generation_logs}, step=global_step)
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         for step, batch in enumerate(train_dataloader):
@@ -898,16 +910,17 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        with torch.cuda.amp.autocast():
-            pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                vae=vae,
-                unet=accelerator.unwrap_model(unet),
-                text_encoder=accelerator.unwrap_model(text_encoder_one),
-                text_encoder_2=accelerator.unwrap_model(text_encoder_two),
-            )
-            generation_logs = run_generation(pipeline, eval_dataset)
-            accelerator.log({"generations": generation_logs}, step=global_step)
+        if accelerator.is_main_process:
+            with torch.cuda.amp.autocast():
+                pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    vae=vae,
+                    unet=accelerator.unwrap_model(unet),
+                    text_encoder=accelerator.unwrap_model(text_encoder_one),
+                    text_encoder_2=accelerator.unwrap_model(text_encoder_two),
+                )
+                generation_logs = run_generation(pipeline, eval_dataset)
+                accelerator.log({"generations": generation_logs}, step=global_step)
         accelerator.wait_for_everyone()
 
     # Create the pipeline using the trained modules and save it.
