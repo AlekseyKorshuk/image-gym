@@ -54,9 +54,6 @@ def prepare_mask_and_masked_image(image, mask):
     mask = torch.from_numpy(mask)
 
     masked_image = image * (mask < 0.5)
-    # mask = mask[0]
-    # masked_image = masked_image[0]
-    # print("SHAPE", mask.shape, masked_image.shape)
     return mask, masked_image
 
 
@@ -86,25 +83,6 @@ def prepare_mask_and_masked_image_new(original_image, mask_image, mask_color='wh
     masked_image_tensor = masked_image_tensor.unsqueeze(0)
 
     return mask_tensor, masked_image_tensor
-
-
-def tensor_to_pil(tensor):
-    return T.ToPILImage()(tensor[0])
-    # # Reverse the normalization
-    # tensor = (tensor + 1) * 127.5
-    # tensor = tensor.clamp(0, 255)
-    #
-    # # Convert to numpy array
-    # array = tensor.detach().cpu().numpy()
-    #
-    # # Transpose to make it in HxWxC format
-    # array = array.transpose(1, 2, 0)
-    #
-    # # Convert to uint8
-    # array = array.astype(np.uint8)
-    #
-    # # Convert to PIL Image
-    # return Image.fromarray(array)
 
 
 # generate random masks
@@ -236,6 +214,12 @@ def parse_args():
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="adamW",
+        help=('The optimizer type to use. Choose between ["AdamW", "prodigy"]'),
+    )
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=5e-6,
@@ -266,6 +250,27 @@ def parse_args():
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument(
+        "--prodigy_beta3",
+        type=float,
+        default=None,
+        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+             "uses the value of square root of beta2. Ignored if optimizer is adamW",
+    )
+    parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
+    parser.add_argument(
+        "--prodigy_use_bias_correction",
+        type=bool,
+        default=True,
+        help="Turn on Adam's bias correction. True by default. Ignored if optimizer is adamW",
+    )
+    parser.add_argument(
+        "--prodigy_safeguard_warmup",
+        type=bool,
+        default=True,
+        help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. "
+             "Ignored if optimizer is adamW",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -463,7 +468,7 @@ def main():
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with="tensorboard",
+        log_with="wandb",
         project_config=project_config,
     )
 
@@ -540,27 +545,66 @@ def main():
                 args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
-    if args.use_8bit_adam:
+    params_to_optimize = (unet.parameters())
+
+    # Optimizer creation
+    if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
+        logger.warn(
+            f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
+            "Defaulting to adamW"
+        )
+        args.optimizer = "adamw"
+
+    if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
+        logger.warn(
+            f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
+            f"set to {args.optimizer.lower()}"
+        )
+
+    if args.optimizer.lower() == "adamw":
+        if args.use_8bit_adam:
+            try:
+                import bitsandbytes as bnb
+            except ImportError:
+                raise ImportError(
+                    "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+                )
+
+            optimizer_class = bnb.optim.AdamW8bit
+        else:
+            optimizer_class = torch.optim.AdamW
+
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+    if args.optimizer.lower() == "prodigy":
         try:
-            import bitsandbytes as bnb
+            import prodigyopt
         except ImportError:
-            raise ImportError(
-                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+            raise ImportError("To use Prodigy, please install the prodigyopt library: `pip install prodigyopt`")
+
+        optimizer_class = prodigyopt.Prodigy
+
+        if args.learning_rate <= 0.1:
+            logger.warn(
+                "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
 
-        optimizer_class = bnb.optim.AdamW8bit
-    else:
-        optimizer_class = torch.optim.AdamW
-
-    params_to_optimize = (unet.parameters())
-    optimizer = optimizer_class(
-        params_to_optimize,
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            beta3=args.prodigy_beta3,
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+            decouple=args.prodigy_decouple,
+            use_bias_correction=args.prodigy_use_bias_correction,
+            safeguard_warmup=args.prodigy_safeguard_warmup,
+        )
 
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
@@ -640,35 +684,15 @@ def main():
         def preprocess_train(examples):
             images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
             mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
-
             pairs = [
                 prepare_mask_and_masked_image(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
-            # mask_images =
-            # images =
-
-            # instance_masks = [conditioning_image_transforms(image) for image in images]
-            # instance_images = [image_transforms(mask_image) for mask_image in mask_images]
-
             examples["pixel_values"] = [image_transforms(image) for image in images]
             examples["instance_images"] = [pair[1] for pair in pairs]
             examples["instance_masks"] = [pair[0] for pair in pairs]
 
             return examples
-
-        # def preprocess_train(examples):
-        #     images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
-        #     mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
-        #
-        #     examples["pixel_values"] = [image_transforms(image) for image in images]
-        #     examples["instance_images"] = [
-        #         image_transforms(apply_mask(pil_image, mask_image))
-        #         for pil_image, mask_image in zip(images, mask_images)
-        #     ]
-        #     examples["instance_masks"] = [image_transforms(mask_image) for mask_image in mask_images]
-        #
-        #     return examples
 
         with accelerator.main_process_first():
             dataset = dataset.with_transform(preprocess_train)
@@ -877,7 +901,7 @@ def main():
 
         accelerator.wait_for_everyone()
 
-    # Create the pipeline using using the trained modules and save it.
+    # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
         text_encoder_one = text_encoder_cls_one.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -906,6 +930,7 @@ def main():
                 folder_path=args.output_dir,
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
+                token=args.hub_token
             )
 
     accelerator.end_training()
