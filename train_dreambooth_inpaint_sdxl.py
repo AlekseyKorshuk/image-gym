@@ -652,7 +652,7 @@ def main():
             batched=True,
             batch_size=4,
             new_fingerprint=new_fingerprint,
-            num_proc=os.cpu_count()
+            num_proc=min(os.cpu_count(), 32)
         )
 
     # del text_encoders, tokenizers
