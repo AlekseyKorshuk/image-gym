@@ -11,6 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -147,6 +148,13 @@ def parse_args():
     )
     parser.add_argument(
         "--dataset_path",
+        type=str,
+        default=None,
+        required=True,
+        help="Path to the dataset on the hub.",
+    )
+    parser.add_argument(
+        "--validation_dataset_path",
         type=str,
         default=None,
         required=True,
@@ -401,60 +409,48 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
     return prompt_embeds, pooled_prompt_embeds
 
 
-class DreamBoothDataset(Dataset):
-    """
-    A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
-    It pre-processes the images and the tokenizes prompts.
-    """
+def run_generation(pipe, eval_dataset):
+    function = functools.partial(generate, pipe=pipe)
+    result_ds = eval_dataset.map(function, batched=True, batch_size=2, num_proc=1)
+    return [
+        wandb.Image(sample["generated_image"], caption=f'{i}: {sample["text"]}')
+        for i, sample in enumerate(result_ds)
+    ]
 
-    def __init__(
-            self,
-            dataset,
-            size=512,
-            center_crop=False,
-    ):
-        self.size = size
-        self.center_crop = center_crop
 
-        self.dataset = dataset
-        self._length = len(self.dataset)
+def generate(batch, pipe):
+    negative_prompt = "watermark, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, " \
+                      "morbid, mutilated, mutation, deformed, dehydrated, bad anatomy, bad proportions, " \
+                      "floating object, levitating "
 
-        self.image_transforms_resize_and_crop = transforms.Compose(
-            [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
-            ]
+    preprocess = transforms.Compose(
+        [
+            transforms.Resize(1024, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(1024),
+        ]
+    )
+
+    pairs = [
+        prepare_mask_and_masked_image(
+            preprocess(image),
+            preprocess(image_mask)
         )
-
-        self.image_transforms = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize([0.5], [0.5]),
-            ]
-        )
-
-    def __len__(self):
-        return self._length
-
-    def __getitem__(self, index):
-        example = {}
-        sample = self.dataset[index % self._length]
-
-        instance_image: Image = sample["image"]
-        if not instance_image.mode == "RGB":
-            instance_image = instance_image.convert("RGB")
-        instance_image = self.image_transforms_resize_and_crop(instance_image)
-        example["PIL_images"] = instance_image
-        example["instance_images"] = self.image_transforms(instance_image)
-
-        instance_mask: Image = sample["image_mask"]
-        if not instance_mask.mode == "RGB":
-            instance_mask = instance_mask.convert("RGB")
-        instance_mask = self.image_transforms_resize_and_crop(instance_mask)
-        example["PIL_masks"] = instance_mask
-        example["instance_masks"] = self.image_transforms(instance_mask)
-
-        return example
+        for image, image_mask in zip(batch["image"], batch["image_mask"])
+    ]
+    images = pipe(
+        prompt=batch["text"],
+        negative_prompt=negative_prompt,
+        num_inference_steps=15,
+        num_images_per_prompt=1,
+        guidance_scale=10.0,
+        strength=1.0,
+        generator=torch.manual_seed(0),
+        image=[pair[1] for pair in pairs],
+        mask_image=[pair[0] for pair in pairs],
+    ).images
+    return {
+        "generated_image": images
+    }
 
 
 def main():
@@ -643,6 +639,8 @@ def main():
         tokenizers=tokenizers,
     )
     with accelerator.main_process_first():
+        eval_dataset = load_dataset(args.validation_dataset_path)
+        eval_dataset = eval_dataset["validation"] if "validation" in eval_dataset.keys() else eval_dataset["train"]
         dataset = load_dataset(args.dataset_path, split="train")
         from datasets.fingerprint import Hasher
 
@@ -656,7 +654,7 @@ def main():
             # num_proc=os.cpu_count()
         )
 
-    del text_encoders, tokenizers
+    # del text_encoders, tokenizers
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -899,22 +897,20 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
+        with torch.cuda.amp.autocast():
+            pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                vae=vae,
+                unet=accelerator.unwrap_model(unet),
+                text_encoder=accelerator.unwrap_model(text_encoder_one),
+                text_encoder_2=accelerator.unwrap_model(text_encoder_two),
+            )
+            generation_logs = run_generation(pipeline, eval_dataset)
+            accelerator.log({"generations": generation_logs}, step=global_step)
         accelerator.wait_for_everyone()
 
     # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
-        text_encoder_one = text_encoder_cls_one.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="text_encoder",
-            revision=args.revision,
-            variant=args.variant,
-        )
-        text_encoder_two = text_encoder_cls_two.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="text_encoder_2",
-            revision=args.revision,
-            variant=args.variant,
-        )
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             vae=vae,
