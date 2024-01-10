@@ -58,32 +58,35 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-def prepare_mask_and_masked_image_new(original_image, mask_image, mask_color='white'):
-    """
-    Adjusts the 'prepare_mask_and_masked_image' function to use the 'apply_mask' function,
-    ensuring compatibility and consistency in the output image.
-    """
-    # Convert the mask image to a binary mask tensor
-    mask_tensor = torch.from_numpy(np.array(mask_image.convert("L"))).float() / 255.0
-    mask_tensor = torch.where(mask_tensor < 0.5, torch.zeros_like(mask_tensor), torch.ones_like(mask_tensor))
+def prepare_mask_and_masked_image_new(image, mask):
+    masked_image = get_preprocessed_image(image, mask)
+    masked_image = np.array(masked_image.convert("RGB"))
+    masked_image = masked_image[None].transpose(0, 3, 1, 2)
+    masked_image = torch.from_numpy(masked_image).to(dtype=torch.float32) / 127.5 - 1.0
 
-    # Create a grey image tensor
-    grey_tensor = torch.full_like(mask_tensor, 128)  # Grey value
-    grey_tensor = grey_tensor.repeat(3, 1, 1)  # Repeat for RGB channels
+    mask = np.array(mask.convert("L"))
+    mask = mask.astype(np.float32) / 255.0
+    mask = mask[None, None]
+    mask[mask < 0.5] = 0
+    mask[mask >= 0.5] = 1
+    mask = torch.from_numpy(mask)
 
-    # Convert the original image to tensor
-    original_tensor = torch.from_numpy(np.array(original_image.convert("RGB"))).float()
-    original_tensor = original_tensor.permute(2, 0, 1)  # Permute to CxHxW
+    return mask, masked_image
 
-    # Apply the binary mask to the image tensor, replacing masked area with grey
-    masked_image_tensor = torch.where(mask_tensor == 1, grey_tensor,
-                                      original_tensor)  # Replace with grey where mask is 1
 
-    # Add batch dimension
-    mask_tensor = mask_tensor.unsqueeze(0)
-    masked_image_tensor = masked_image_tensor.unsqueeze(0)
-
-    return mask_tensor, masked_image_tensor
+def get_preprocessed_image(initial_image, mask_image):
+    initial_image_size = initial_image.size
+    noise_image = np.random.normal(loc=127.5, scale=127.5, size=(initial_image_size[1], initial_image_size[0], 3))
+    noise_image_clipped = np.clip(noise_image, 0, 255).astype(np.uint8)
+    noise_image_pil = Image.fromarray(noise_image_clipped)
+    transparent_image = initial_image.copy()
+    mask_array = np.array(mask_image.convert("L"))
+    alpha_channel = np.where(mask_array == 255, 0, 255).astype(np.uint8)
+    transparent_image.putalpha(Image.fromarray(alpha_channel))
+    noise_image_rgba = noise_image_pil.convert("RGBA")
+    transparent_image_rgba = transparent_image.convert("RGBA")
+    combined_image = Image.alpha_composite(noise_image_rgba, transparent_image_rgba)
+    return combined_image
 
 
 # generate random masks
@@ -431,7 +434,7 @@ def generate(batch, pipe):
     )
 
     pairs = [
-        prepare_mask_and_masked_image(
+        prepare_mask_and_masked_image_new(
             preprocess(image),
             preprocess(image_mask)
         )
@@ -684,7 +687,7 @@ def main():
             images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
             mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
             pairs = [
-                prepare_mask_and_masked_image(pil_image, mask_image)
+                prepare_mask_and_masked_image_new(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
             examples["pixel_values"] = [image_transforms(image) for image in images]
@@ -925,7 +928,7 @@ def main():
 
     # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
-        pipeline = StableDiffusionXLPipeline.from_pretrained(
+        pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             vae=vae,
             unet=accelerator.unwrap_model(unet),
