@@ -51,12 +51,12 @@ generation_params_strength_1 = {
 generation_params_strength_99 = {
     "num_inference_steps": 20,
     "num_images_per_prompt": 1,
-    "guidance_scale": 8.0,
+    "guidance_scale": 10.0,
     "strength": 0.99,
 }
 
 
-def prepare_mask_and_masked_image(image, mask):
+def prepare_mask_and_masked_image_v0(image, mask):
     image = np.array(image.convert("RGB"))
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
@@ -72,7 +72,7 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-def prepare_mask_and_masked_image_new(image, mask):
+def prepare_mask_and_masked_image_v1(image, mask):
     masked_image = get_preprocessed_image(image, mask)
     masked_image = np.array(masked_image.convert("RGB"))
     masked_image = masked_image[None].transpose(0, 3, 1, 2)
@@ -102,6 +102,8 @@ def get_preprocessed_image(initial_image, mask_image):
     combined_image = Image.alpha_composite(noise_image_rgba, transparent_image_rgba)
     return combined_image
 
+
+prepare_mask_and_masked_image = prepare_mask_and_masked_image_v1
 
 # generate random masks
 def random_mask(im_shape, ratio=1, mask_full_image=False):
@@ -448,7 +450,7 @@ def generate(batch, pipe, generation_params):
     )
 
     pairs = [
-        prepare_mask_and_masked_image_new(
+        prepare_mask_and_masked_image(
             preprocess(image),
             preprocess(image_mask)
         )
@@ -698,7 +700,7 @@ def main():
             images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image"]]
             mask_images = [resize_and_crop_transforms(image.convert("RGB")) for image in examples["image_mask"]]
             pairs = [
-                prepare_mask_and_masked_image_new(pil_image, mask_image)
+                prepare_mask_and_masked_image(pil_image, mask_image)
                 for pil_image, mask_image in zip(images, mask_images)
             ]
             examples["pixel_values"] = [image_transforms(image) for image in images]
