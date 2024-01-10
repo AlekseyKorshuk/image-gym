@@ -105,6 +105,7 @@ def get_preprocessed_image(initial_image, mask_image):
 
 prepare_mask_and_masked_image = prepare_mask_and_masked_image_v1
 
+
 # generate random masks
 def random_mask(im_shape, ratio=1, mask_full_image=False):
     mask = Image.new("L", im_shape, 0)
