@@ -441,7 +441,7 @@ def run_generation(pipe, eval_dataset, generation_params):
 def generate(batch, pipe, generation_params):
     negative_prompt = "watermark, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, " \
                       "morbid, mutilated, mutation, deformed, dehydrated, bad anatomy, bad proportions, " \
-                      "floating object, levitating "
+                      "floating object, levitating, hallucination"
 
     preprocess = transforms.Compose(
         [
