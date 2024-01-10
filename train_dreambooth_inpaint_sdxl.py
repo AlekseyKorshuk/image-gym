@@ -457,13 +457,10 @@ def generate(batch, pipe, generation_params):
     images = pipe(
         prompt=batch["text"],
         negative_prompt=negative_prompt,
-        num_inference_steps=15,
-        num_images_per_prompt=1,
-        guidance_scale=10.0,
-        strength=1.0,
         generator=torch.manual_seed(0),
         image=[pair[1] for pair in pairs],
         mask_image=[pair[0] for pair in pairs],
+        **generation_params
     ).images
     return {
         "generated_image": images
