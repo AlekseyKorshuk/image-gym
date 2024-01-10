@@ -41,6 +41,20 @@ check_min_version("0.13.0.dev0")
 
 logger = get_logger(__name__)
 
+generation_params_strength_1 = {
+    "num_inference_steps": 20,
+    "num_images_per_prompt": 1,
+    "guidance_scale": 10.0,
+    "strength": 1.0,
+}
+
+generation_params_strength_99 = {
+    "num_inference_steps": 20,
+    "num_images_per_prompt": 1,
+    "guidance_scale": 10.0,
+    "strength": 0.99,
+}
+
 
 def prepare_mask_and_masked_image(image, mask):
     image = np.array(image.convert("RGB"))
@@ -412,8 +426,8 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
     return prompt_embeds, pooled_prompt_embeds
 
 
-def run_generation(pipe, eval_dataset):
-    function = functools.partial(generate, pipe=pipe)
+def run_generation(pipe, eval_dataset, generation_params):
+    function = functools.partial(generate, pipe=pipe, generation_params=generation_params)
     result_ds = eval_dataset.map(function, batched=True, batch_size=2, num_proc=1)
     return [
         wandb.Image(sample["generated_image"], caption=f'{i}: {sample["text"]}')
@@ -421,7 +435,7 @@ def run_generation(pipe, eval_dataset):
     ]
 
 
-def generate(batch, pipe):
+def generate(batch, pipe, generation_params):
     negative_prompt = "watermark, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, " \
                       "morbid, mutilated, mutation, deformed, dehydrated, bad anatomy, bad proportions, " \
                       "floating object, levitating "
@@ -822,8 +836,15 @@ def main():
                 text_encoder=accelerator.unwrap_model(text_encoder_one),
                 text_encoder_2=accelerator.unwrap_model(text_encoder_two),
             )
-            generation_logs = run_generation(pipeline, eval_dataset)
-            accelerator.log({"generations": generation_logs}, step=global_step)
+            generation_logs_1 = run_generation(pipeline, eval_dataset, generation_params_strength_1)
+            generation_logs_99 = run_generation(pipeline, eval_dataset, generation_params_strength_99)
+            accelerator.log(
+                {
+                    "generations_strength_1": generation_logs_1,
+                    "generations_strength_99": generation_logs_99
+                },
+                step=global_step
+            )
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
@@ -922,8 +943,15 @@ def main():
                     text_encoder=accelerator.unwrap_model(text_encoder_one),
                     text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                 )
-                generation_logs = run_generation(pipeline, eval_dataset)
-                accelerator.log({"generations": generation_logs}, step=global_step)
+                generation_logs_1 = run_generation(pipeline, eval_dataset, generation_params_strength_1)
+                generation_logs_99 = run_generation(pipeline, eval_dataset, generation_params_strength_99)
+                accelerator.log(
+                    {
+                        "generations_strength_1": generation_logs_1,
+                        "generations_strength_99": generation_logs_99
+                    },
+                    step=global_step
+                )
         accelerator.wait_for_everyone()
 
     # Create the pipeline using the trained modules and save it.
