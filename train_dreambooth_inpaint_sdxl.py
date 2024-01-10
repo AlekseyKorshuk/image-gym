@@ -51,7 +51,7 @@ generation_params_strength_1 = {
 generation_params_strength_99 = {
     "num_inference_steps": 20,
     "num_images_per_prompt": 1,
-    "guidance_scale": 10.0,
+    "guidance_scale": 8.0,
     "strength": 0.99,
 }
 
