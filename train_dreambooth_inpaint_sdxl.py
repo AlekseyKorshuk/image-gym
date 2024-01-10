@@ -42,14 +42,14 @@ check_min_version("0.13.0.dev0")
 logger = get_logger(__name__)
 
 generation_params_strength_1 = {
-    "num_inference_steps": 20,
+    "num_inference_steps": 25,
     "num_images_per_prompt": 1,
     "guidance_scale": 10.0,
     "strength": 1.0,
 }
 
 generation_params_strength_99 = {
-    "num_inference_steps": 20,
+    "num_inference_steps": 25,
     "num_images_per_prompt": 1,
     "guidance_scale": 10.0,
     "strength": 0.99,
