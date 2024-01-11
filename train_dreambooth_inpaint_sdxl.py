@@ -106,7 +106,7 @@ def get_preprocessed_image(initial_image, mask_image):
     return combined_image
 
 
-prepare_mask_and_masked_image = prepare_mask_and_masked_image_v1
+prepare_mask_and_masked_image = prepare_mask_and_masked_image_v0
 
 
 # generate random masks
