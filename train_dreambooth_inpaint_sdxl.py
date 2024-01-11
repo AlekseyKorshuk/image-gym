@@ -7,6 +7,7 @@ import os
 import random
 from pathlib import Path
 
+from packaging import version
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -35,7 +36,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version
+from diffusers.utils import check_min_version, is_xformers_available
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.13.0.dev0")
@@ -231,6 +232,9 @@ def parse_args():
         type=int,
         default=None,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
+    )
+    parser.add_argument(
+        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -569,6 +573,20 @@ def main():
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
         ema_unet.to(accelerator.device)
 
+    if args.enable_xformers_memory_efficient_attention:
+        if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
+            unet.enable_xformers_memory_efficient_attention()
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
+
+
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
 
@@ -842,6 +860,10 @@ def main():
 
     if accelerator.is_main_process:
         with torch.cuda.amp.autocast():
+            if args.use_ema:
+                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                ema_unet.store(unet.parameters())
+                ema_unet.copy_to(unet.parameters())
             pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 vae=vae,
@@ -849,11 +871,16 @@ def main():
                 text_encoder=accelerator.unwrap_model(text_encoder_one),
                 text_encoder_2=accelerator.unwrap_model(text_encoder_two),
             )
+            if args.enable_xformers_memory_efficient_attention:
+                pipeline.enable_xformers_memory_efficient_attention()
             generation_logs = {
                 media_title: run_generation(pipeline, eval_dataset, gen_params)
                 for media_title, gen_params in generation_params.items()
             }
             accelerator.log(generation_logs, step=global_step)
+            if args.use_ema:
+                # Switch back to the original UNet parameters.
+                ema_unet.restore(unet.parameters())
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
@@ -963,6 +990,8 @@ def main():
                     text_encoder=accelerator.unwrap_model(text_encoder_one),
                     text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                 )
+                if args.enable_xformers_memory_efficient_attention:
+                    pipeline.enable_xformers_memory_efficient_attention()
                 generation_logs = {
                     media_title: run_generation(pipeline, eval_dataset, gen_params)
                     for media_title, gen_params in generation_params.items()
