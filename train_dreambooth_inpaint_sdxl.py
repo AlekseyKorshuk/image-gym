@@ -704,7 +704,7 @@ def main():
         # add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
 
         return {
-            "text": examples["text"],
+            "text": [example["text"] for example in examples],
             "masks": torch.stack([example["instance_masks"] for example in examples]),
             "pixel_values": pixel_values,
             "masked_images": masked_images,
