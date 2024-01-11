@@ -106,7 +106,7 @@ def get_preprocessed_image(initial_image, mask_image):
     return combined_image
 
 
-prepare_mask_and_masked_image = prepare_mask_and_masked_image_v1
+prepare_mask_and_masked_image = prepare_mask_and_masked_image_v0
 
 
 # generate random masks
@@ -858,29 +858,29 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    # if accelerator.is_main_process:
-    #     with torch.cuda.amp.autocast():
-    #         if args.use_ema:
-    #             # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-    #             ema_unet.store(unet.parameters())
-    #             ema_unet.copy_to(unet.parameters())
-    #         pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
-    #             args.pretrained_model_name_or_path,
-    #             vae=vae,
-    #             unet=accelerator.unwrap_model(unet),
-    #             text_encoder=accelerator.unwrap_model(text_encoder_one),
-    #             text_encoder_2=accelerator.unwrap_model(text_encoder_two),
-    #         )
-    #         if args.enable_xformers_memory_efficient_attention:
-    #             pipeline.enable_xformers_memory_efficient_attention()
-    #         generation_logs = {
-    #             media_title: run_generation(pipeline, eval_dataset, gen_params)
-    #             for media_title, gen_params in generation_params.items()
-    #         }
-    #         accelerator.log(generation_logs, step=global_step)
-    #         if args.use_ema:
-    #             # Switch back to the original UNet parameters.
-    #             ema_unet.restore(unet.parameters())
+    if accelerator.is_main_process:
+        with torch.cuda.amp.autocast():
+            if args.use_ema:
+                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                ema_unet.store(unet.parameters())
+                ema_unet.copy_to(unet.parameters())
+            pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                vae=vae,
+                unet=accelerator.unwrap_model(unet),
+                text_encoder=accelerator.unwrap_model(text_encoder_one),
+                text_encoder_2=accelerator.unwrap_model(text_encoder_two),
+            )
+            if args.enable_xformers_memory_efficient_attention:
+                pipeline.enable_xformers_memory_efficient_attention()
+            generation_logs = {
+                media_title: run_generation(pipeline, eval_dataset, gen_params)
+                for media_title, gen_params in generation_params.items()
+            }
+            accelerator.log(generation_logs, step=global_step)
+            if args.use_ema:
+                # Switch back to the original UNet parameters.
+                ema_unet.restore(unet.parameters())
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
