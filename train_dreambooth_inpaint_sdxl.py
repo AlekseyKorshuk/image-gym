@@ -439,7 +439,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
 
 def run_generation(pipe, eval_dataset, generation_params):
     function = functools.partial(generate, pipe=pipe, generation_params=generation_params)
-    result_ds = eval_dataset.map(function, batched=True, batch_size=5, num_proc=1)
+    result_ds = eval_dataset.map(function, batched=True, batch_size=2, num_proc=1)
     return [
         wandb.Image(sample["generated_image"], caption=f'{i}: {sample["text"]}')
         for i, sample in enumerate(result_ds)
