@@ -8,3 +8,4 @@ tensorboard
 Jinja2
 wandb
 prodigyopt
+bitsandbytes
