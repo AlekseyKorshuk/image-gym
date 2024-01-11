@@ -648,10 +648,27 @@ def main():
     # from memory.
     text_encoders = [text_encoder_one, text_encoder_two]
     tokenizers = [tokenizer_one, tokenizer_two]
+    compute_embeddings_fn = functools.partial(
+        compute_embeddings,
+        text_encoders=text_encoders,
+        tokenizers=tokenizers,
+    )
     with accelerator.main_process_first():
         eval_dataset = load_dataset(args.validation_dataset_path)
         eval_dataset = eval_dataset["validation"] if "validation" in eval_dataset.keys() else eval_dataset["train"]
-        train_dataset = load_dataset(args.dataset_path, split="train")
+        dataset = load_dataset(args.dataset_path, split="train")
+        from datasets.fingerprint import Hasher
+
+        # fingerprint used by the cache for the other processes to load the result
+        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
+        new_fingerprint = Hasher.hash(args)
+        train_dataset = dataset.map(
+            compute_embeddings_fn,
+            batched=True,
+            new_fingerprint=new_fingerprint,
+            # batch_size=4,
+            # num_proc=min(os.cpu_count(), 32)
+        )
 
     # del text_encoders, tokenizers
     gc.collect()
@@ -665,6 +682,13 @@ def main():
             ]
         )
         image_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+
+        conditioning_image_transforms = transforms.Compose(
             [
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -698,17 +722,17 @@ def main():
         masked_images = torch.stack([example["instance_images"] for example in examples])
         masked_images = masked_images.to(memory_format=torch.contiguous_format).float()
 
-        # prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
+        prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
 
-        # add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
-        # add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
+        add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
+        add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
 
         return {
             "masks": torch.stack([example["instance_masks"] for example in examples]),
             "pixel_values": pixel_values,
             "masked_images": masked_images,
-            # "prompt_ids": prompt_ids,
-            # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
+            "prompt_ids": prompt_ids,
+            "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
         }
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -865,16 +889,11 @@ def main():
                 # concatenate the noised latents with the mask and the masked latents
                 latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
 
-                embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
-                unet_added_conditions = {
-                    "text_embeds": embeddings_dict["text_embeds"],
-                    "time_ids": embeddings_dict["time_ids"]
-                }
                 # Predict the noise residual
                 noise_pred = unet(
                     latent_model_input, timesteps,
-                    encoder_hidden_states=embeddings_dict["prompt_embeds"],
-                    added_cond_kwargs=unet_added_conditions,
+                    encoder_hidden_states=batch["prompt_ids"],
+                    added_cond_kwargs=batch["unet_added_conditions"],
                 ).sample
 
                 # Get the target for loss depending on the prediction type
