@@ -254,6 +254,12 @@ def parse_args():
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
+        "--text_encoder_lr",
+        type=float,
+        default=1e-6,
+        help="Text encoder learning rate to use.",
+    )
+    parser.add_argument(
         "--scale_lr",
         action="store_true",
         default=False,
@@ -277,6 +283,9 @@ def parse_args():
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
+    parser.add_argument(
+        "--adam_weight_decay_text_encoder", type=float, default=None, help="Weight decay to use for text_encoder"
+    )
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument(
         "--prodigy_beta3",
@@ -402,27 +411,26 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
             # take a random caption if there are multiple
             captions.append(random.choice(caption) if is_train else caption[0])
 
-    with torch.no_grad():
-        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-            text_inputs = tokenizer(
-                captions,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            prompt_embeds = text_encoder(
-                text_input_ids.to(text_encoder.device),
-                output_hidden_states=True,
-            )
+    for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+        text_inputs = tokenizer(
+            captions,
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        prompt_embeds = text_encoder(
+            text_input_ids.to(text_encoder.device),
+            output_hidden_states=True,
+        )
 
-            # We are only ALWAYS interested in the pooled output of the final text encoder
-            pooled_prompt_embeds = prompt_embeds[0]
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-            bs_embed, seq_len, _ = prompt_embeds.shape
-            prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
-            prompt_embeds_list.append(prompt_embeds)
+        # We are only ALWAYS interested in the pooled output of the final text encoder
+        pooled_prompt_embeds = prompt_embeds[0]
+        prompt_embeds = prompt_embeds.hidden_states[-2]
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
+        prompt_embeds_list.append(prompt_embeds)
 
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
@@ -547,8 +555,6 @@ def main():
     )
 
     vae.requires_grad_(False)
-    text_encoder_one.requires_grad_(False)
-    text_encoder_two.requires_grad_(False)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -558,7 +564,26 @@ def main():
                 args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    params_to_optimize = (unet.parameters())
+    unet_parameters_with_lr = {"params": unet.parameters(), "lr": args.learning_rate}
+    text_parameters_one_with_lr = {
+        "params": text_encoder_one.parameters(),
+        "weight_decay": args.adam_weight_decay_text_encoder
+        if args.adam_weight_decay_text_encoder
+        else args.adam_weight_decay,
+        "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+    }
+    text_parameters_two_with_lr = {
+        "params": text_encoder_two.parameters(),
+        "weight_decay": args.adam_weight_decay_text_encoder
+        if args.adam_weight_decay_text_encoder
+        else args.adam_weight_decay,
+        "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+    }
+    params_to_optimize = [
+        unet_parameters_with_lr,
+        text_parameters_one_with_lr,
+        text_parameters_two_with_lr,
+    ]
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
