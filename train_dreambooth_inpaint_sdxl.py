@@ -25,6 +25,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers import AutoTokenizer, PretrainedConfig
 import torchvision.transforms as T
+from diffusers.training_utils import EMAModel, compute_snr
 
 from diffusers import (
     AutoencoderKL,
@@ -281,6 +282,7 @@ def parse_args():
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
+    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -554,8 +556,18 @@ def main():
         ignore_mismatched_sizes=True,
         low_cpu_mem_usage=False
     )
-
+    unet.train()
     vae.requires_grad_(False)
+
+    if args.use_ema:
+        ema_unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant,
+            in_channels=9,
+            ignore_mismatched_sizes=True,
+            low_cpu_mem_usage=False
+        )
+        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+        ema_unet.to(accelerator.device)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -920,6 +932,8 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
 
@@ -938,6 +952,10 @@ def main():
 
         if accelerator.is_main_process:
             with torch.cuda.amp.autocast():
+                if args.use_ema:
+                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                    ema_unet.store(unet.parameters())
+                    ema_unet.copy_to(unet.parameters())
                 pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
@@ -950,14 +968,20 @@ def main():
                     for media_title, gen_params in generation_params.items()
                 }
                 accelerator.log(generation_logs, step=global_step)
+                if args.use_ema:
+                    # Switch back to the original UNet parameters.
+                    ema_unet.restore(unet.parameters())
         accelerator.wait_for_everyone()
 
     # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
+        unet = accelerator.unwrap_model(unet)
+        if args.use_ema:
+            ema_unet.copy_to(unet.parameters())
         pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             vae=vae,
-            unet=accelerator.unwrap_model(unet),
+            unet=unet,
             text_encoder=accelerator.unwrap_model(text_encoder_one),
             text_encoder_2=accelerator.unwrap_model(text_encoder_two),
         )
