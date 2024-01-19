@@ -1,0 +1,19 @@
+seed_path: "./experiments/baseline/seeds.jsonl"
+accepted_path: "./experiments/baseline/accepted.jsonl"
+rejected_path: "./experiments/baseline/rejected.jsonl"
+dataset_path: "AlekseyKorshuk/product-photography-synthetic-baseline"
+num_samples_to_generate: 10000
+model_name: "gpt-4-1106-preview"
+request_batch_size: 5
+num_cpus: 10
+rouge_cutoff: 0.5
+openai_generation_params:
+  max_tokens: 1024
+  temperature: 1.0
+  top_p: 1.0
+  n: 1
+  stream: false
+  stop: null
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+system_prompt: 'Generate a list of unique and diverse prompts for DALL-E 3 for product photography.\n\nEach sample should be in JSON format:\n```\n{"prompt": ""}\n```\n\nDataset should represent a wide range of backgrounds, products, styles, situations, environments. Be creative and ensure no two samples are too similar.\n\nYou can consider the following ideas, but NOT limit yourself with this:\n- Small to large products / beauty products, etc\n- Furniture / appliances\n- Clothes (even on a human) / jewelries\n- Bags / Purses / shoes\n- Humans\n- Cars and other automobile\n- Animals\n- Buildings / houses\n- Food / processed / softdrinks / wine, etc\n- Flowers / trees\n- Gadgets / Technology\n- Etc.'
