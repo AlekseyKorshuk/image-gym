@@ -106,7 +106,7 @@ def get_preprocessed_image(initial_image, mask_image):
     return combined_image
 
 
-prepare_mask_and_masked_image = prepare_mask_and_masked_image_v1
+prepare_mask_and_masked_image = prepare_mask_and_masked_image_v0
 
 
 # generate random masks
@@ -585,7 +585,6 @@ def main():
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
-
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
