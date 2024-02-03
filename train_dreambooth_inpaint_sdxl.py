@@ -466,7 +466,7 @@ def generate(batch, pipe, generation_params):
     )
 
     pairs = [
-        prepare_mask_and_masked_image(
+        prepare_mask_and_masked_image_v0(
             preprocess(image),
             preprocess(image_mask)
         )
