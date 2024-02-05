@@ -759,6 +759,7 @@ def main():
         # add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
 
         return {
+            "ids": [example["id"] for example in examples],
             "text": [example["text"] for example in examples],
             "masks": torch.stack([example["instance_masks"] for example in examples]),
             "pixel_values": pixel_values,
@@ -892,6 +893,7 @@ def main():
 
             with accelerator.accumulate(unet):
                 # Convert images to latent space
+                print("IDS:", batch["ids"])
 
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
