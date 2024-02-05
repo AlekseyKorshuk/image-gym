@@ -560,18 +560,14 @@ def main():
         ignore_mismatched_sizes=True,
         low_cpu_mem_usage=False
     )
-    unet.train()
     vae.requires_grad_(False)
 
     if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant,
-            in_channels=9,
-            ignore_mismatched_sizes=True,
-            low_cpu_mem_usage=False
-        )
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+        ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config,
+                            inv_gamma=1.0,
+                            power=3 / 4)
         ema_unet.to(accelerator.device)
+    unet.train()
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -769,7 +765,8 @@ def main():
         }
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
+        drop_last=True
     )
 
     # Scheduler and math around the number of training steps.
@@ -785,10 +782,11 @@ def main():
         num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
         num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
-
+    # print(f"Before accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         unet, optimizer, train_dataloader, lr_scheduler
     )
+    # print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     accelerator.register_for_checkpointing(lr_scheduler)
 
     weight_dtype = torch.float32
@@ -893,7 +891,7 @@ def main():
 
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                print("IDS:", batch["ids"])
+                # print("IDS:", batch["ids"])
 
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
