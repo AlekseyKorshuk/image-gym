@@ -786,6 +786,8 @@ def main():
     unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         unet, optimizer, train_dataloader, lr_scheduler
     )
+    if args.use_ema:
+        ema_unet.to(accelerator.device)
     # print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     accelerator.register_for_checkpointing(lr_scheduler)
 
