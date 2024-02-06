@@ -726,8 +726,8 @@ def main():
     with accelerator.main_process_first():
         eval_dataset = load_dataset(args.validation_dataset_path)
         eval_dataset = eval_dataset["validation"] if "validation" in eval_dataset.keys() else eval_dataset["train"]
-        train_dataset = load_dataset(args.dataset_path, split="train[:90%]")
-        validation_dataset = load_dataset(args.dataset_path, split="train[90%:]")
+        train_dataset = load_dataset(args.dataset_path, split="train[:95%]")
+        validation_dataset = load_dataset(args.dataset_path, split="train[95%:]")
 
     # del text_encoders, tokenizers
     gc.collect()
@@ -1084,7 +1084,12 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {
+                "loss": loss.detach().item(),
+                "lr": lr_scheduler.get_last_lr()[0],
+                "step": global_step,
+                "epoch": epoch + (step + 1) / len(train_dataloader),
+            }
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
