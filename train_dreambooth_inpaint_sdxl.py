@@ -888,60 +888,60 @@ def main():
             if args.use_ema:
                 # Switch back to the original UNet parameters.
                 ema_unet.restore(unet.parameters())
-        unet.eval()
-        loss = 0
-        for batch in validation_dataloader:
-            with torch.no_grad():
-                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * vae.config.scaling_factor
+    unet.eval()
+    loss = 0
+    for batch in validation_dataloader:
+        with torch.no_grad():
+            latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
+            latents = latents * vae.config.scaling_factor
 
-                masked_latents = vae.encode(
-                    batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
-                ).latent_dist.sample()
-                masked_latents = masked_latents * vae.config.scaling_factor
+            masked_latents = vae.encode(
+                batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
+            ).latent_dist.sample()
+            masked_latents = masked_latents * vae.config.scaling_factor
 
-                masks = batch["masks"]
-                mask = torch.stack(
-                    [
-                        torch.nn.functional.interpolate(mask, size=(args.resolution // 8, args.resolution // 8))
-                        for mask in masks
-                    ]
-                )
-                mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
+            masks = batch["masks"]
+            mask = torch.stack(
+                [
+                    torch.nn.functional.interpolate(mask, size=(args.resolution // 8, args.resolution // 8))
+                    for mask in masks
+                ]
+            )
+            mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
 
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
+            noise = torch.randn_like(latents)
+            bsz = latents.shape[0]
+            timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+            timesteps = timesteps.long()
 
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
+            latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
 
-                embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
-                unet_added_conditions = {
-                    "text_embeds": embeddings_dict["text_embeds"],
-                    "time_ids": embeddings_dict["time_ids"]
-                }
-                noise_pred = unet(
-                    latent_model_input, timesteps,
-                    encoder_hidden_states=embeddings_dict["prompt_embeds"],
-                    added_cond_kwargs=unet_added_conditions,
-                ).sample
+            embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
+            unet_added_conditions = {
+                "text_embeds": embeddings_dict["text_embeds"],
+                "time_ids": embeddings_dict["time_ids"]
+            }
+            noise_pred = unet(
+                latent_model_input, timesteps,
+                encoder_hidden_states=embeddings_dict["prompt_embeds"],
+                added_cond_kwargs=unet_added_conditions,
+            ).sample
 
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+            if noise_scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif noise_scheduler.config.prediction_type == "v_prediction":
+                target = noise_scheduler.get_velocity(latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
+            loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
 
-        if accelerator.is_main_process:
-            loss /= len(validation_dataloader)
-            logger.info(f"Validation loss: {loss}")
-            accelerator.log({"val_loss": loss}, step=global_step)
+    if accelerator.is_main_process:
+        loss /= len(validation_dataloader)
+        logger.info(f"Validation loss: {loss}")
+        accelerator.log({"val_loss": loss}, step=global_step)
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
