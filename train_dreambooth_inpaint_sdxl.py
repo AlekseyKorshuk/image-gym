@@ -834,7 +834,7 @@ def main():
     lr_scheduler = get_cosine_schedule_with_min_lr(
         optimizer,
         num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps,
         min_lr_ratio=0.1,
     )
 
