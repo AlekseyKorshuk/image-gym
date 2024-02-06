@@ -772,7 +772,7 @@ def main():
     validation_dataset = ShufflerIterDataPipe(validation_dataset, buffer_size=args.train_batch_size)
     validation_dataloader = torch.utils.data.DataLoader(
         validation_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
-        drop_last=True
+        drop_last=False
     )
 
     # Scheduler and math around the number of training steps.
@@ -789,8 +789,8 @@ def main():
         num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
     # print(f"Before accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    unet, optimizer, train_dataloader, validation_dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, train_dataloader, validation_dataloader, lr_scheduler
     )
     # torch.utils.data.graph_settings.apply_shuffle_settings(train_dataloader.dataset, shuffle=True)
     if args.use_ema:
@@ -888,8 +888,9 @@ def main():
             if args.use_ema:
                 # Switch back to the original UNet parameters.
                 ema_unet.restore(unet.parameters())
+
     accelerator.wait_for_everyone()
-    unet.eval()
+
     loss = 0
     for batch in validation_dataloader:
         with torch.no_grad():
