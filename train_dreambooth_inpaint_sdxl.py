@@ -765,9 +765,9 @@ def main():
             # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
         }
 
-    shuffled_train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=args.train_batch_size)
+    # train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=args.train_batch_size)
     train_dataloader = torch.utils.data.DataLoader(
-        shuffled_train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True
     )
 
