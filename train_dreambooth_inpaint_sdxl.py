@@ -408,26 +408,10 @@ def import_model_class_from_model_name_or_path(
 
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
+def encode_prompt(input_ids_1, input_ids_2, text_encoders, tokenizers, is_train=True):
     prompt_embeds_list = []
 
-    captions = []
-    for caption in prompt_batch:
-        if isinstance(caption, str):
-            captions.append(caption)
-        elif isinstance(caption, (list, np.ndarray)):
-            # take a random caption if there are multiple
-            captions.append(random.choice(caption) if is_train else caption[0])
-
-    for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-        text_inputs = tokenizer(
-            captions,
-            padding="max_length",
-            max_length=tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
+    for text_input_ids, text_encoder in zip([input_ids_1, input_ids_2], text_encoders):
         prompt_embeds = text_encoder(
             text_input_ids.to(text_encoder.device),
             output_hidden_states=True,
@@ -677,10 +661,8 @@ def main():
         original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
-        prompt_batch = batch["text"]
-
         prompt_embeds, pooled_prompt_embeds = encode_prompt(
-            prompt_batch, text_encoders, tokenizers, is_train
+            batch["input_ids_1"], batch["input_ids_2"], text_encoders, tokenizers, is_train
         )
         add_text_embeds = pooled_prompt_embeds
 
@@ -690,7 +672,7 @@ def main():
 
         prompt_embeds = prompt_embeds.to(accelerator.device)
         add_text_embeds = add_text_embeds.to(accelerator.device)
-        add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
+        add_time_ids = add_time_ids.repeat(len(batch["input_ids_1"]), 1)
         add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
         unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
@@ -754,10 +736,25 @@ def main():
 
         # add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
         # add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
-
+        input_ids_1 = tokenizer_one(
+            [example["text"] for example in examples],
+            padding="max_length",
+            max_length=tokenizer_one.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
+        input_ids_2 = tokenizer_two(
+            [example["text"] for example in examples],
+            padding="max_length",
+            max_length=tokenizer_two.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
         return {
+            "input_ids_1": input_ids_1,
+            "input_ids_2": input_ids_2,
             # "ids": [example["id"] for example in examples],
-            "text": [example["text"] for example in examples],
+            # "text": [example["text"] for example in examples],
             "masks": torch.stack([example["instance_masks"] for example in examples]),
             "pixel_values": pixel_values,
             "masked_images": masked_images,
@@ -765,7 +762,7 @@ def main():
             # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
         }
 
-    # train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=args.train_batch_size)
+    train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=args.train_batch_size)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True
