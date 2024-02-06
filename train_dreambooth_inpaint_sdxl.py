@@ -756,7 +756,7 @@ def main():
         # add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
 
         return {
-            "ids": [example["id"] for example in examples],
+            # "ids": [example["id"] for example in examples],
             "text": [example["text"] for example in examples],
             "masks": torch.stack([example["instance_masks"] for example in examples]),
             "pixel_values": pixel_values,
@@ -765,7 +765,7 @@ def main():
             # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
         }
 
-    shuffled_train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=100)
+    shuffled_train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=args.train_batch_size)
     train_dataloader = torch.utils.data.DataLoader(
         shuffled_train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True
