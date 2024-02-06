@@ -892,7 +892,7 @@ def main():
     accelerator.wait_for_everyone()
 
     loss = 0
-    for batch in validation_dataloader:
+    for batch in tqdm(validation_dataloader, desc="Validation"):
         with torch.no_grad():
             latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
             latents = latents * vae.config.scaling_factor
@@ -1065,9 +1065,8 @@ def main():
                     # Switch back to the original UNet parameters.
                     ema_unet.restore(unet.parameters())
 
-        unet.eval()
         loss = 0
-        for batch in validation_dataloader:
+        for batch in tqdm(validation_dataloader, desc="Validation"):
             with torch.no_grad():
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
