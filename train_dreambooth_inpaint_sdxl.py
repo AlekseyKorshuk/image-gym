@@ -11,6 +11,7 @@ from packaging import version
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.utils.data.datapipes.iter.combinatorics import ShufflerIterDataPipe
 import torch.utils.checkpoint
 import wandb
 from accelerate import Accelerator
@@ -764,8 +765,9 @@ def main():
             # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
         }
 
+    shuffled_train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=100)
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
+        shuffled_train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True
     )
 
