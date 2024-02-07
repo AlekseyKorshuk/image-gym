@@ -876,35 +876,35 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
         caption_column=args.caption_column,
     )
-    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
+    # compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
     with accelerator.main_process_first():
         from datasets.fingerprint import Hasher
 
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        new_fingerprint_for_vae = Hasher.hash("vae")
+        # new_fingerprint_for_vae = Hasher.hash("vae")
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-        train_dataset = train_dataset.map(
-            compute_vae_encodings_fn,
-            batched=True,
-            batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
-            new_fingerprint=new_fingerprint_for_vae,
-        )
+        # train_dataset = train_dataset.map(
+        #     compute_vae_encodings_fn,
+        #     batched=True,
+        #     batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
+        #     new_fingerprint=new_fingerprint_for_vae,
+        # )
 
-    del text_encoders, tokenizers, vae
+    del text_encoders, tokenizers
     gc.collect()
     torch.cuda.empty_cache()
 
     def collate_fn(examples):
-        model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
+        # model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
         original_sizes = [example["original_sizes"] for example in examples]
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
         prompt_embeds = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
         pooled_prompt_embeds = torch.stack([torch.tensor(example["pooled_prompt_embeds"]) for example in examples])
 
         return {
-            "model_input": model_input,
+            # "model_input": model_input,
             "prompt_embeds": prompt_embeds,
             "pooled_prompt_embeds": pooled_prompt_embeds,
             "original_sizes": original_sizes,
@@ -1011,7 +1011,15 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
-                model_input = batch["model_input"].to(accelerator.device)
+                images = batch.pop("pixel_values")
+                pixel_values = torch.stack(list(images))
+                pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+                pixel_values = pixel_values.to(vae.device, dtype=vae.dtype)
+
+                with torch.no_grad():
+                    model_input = vae.encode(pixel_values).latent_dist.sample()
+                model_input = model_input * vae.config.scaling_factor
+
                 noise = torch.randn_like(model_input)
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
