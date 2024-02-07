@@ -691,6 +691,7 @@ def main(args):
         )
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
+
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
@@ -992,7 +993,6 @@ def main(args):
 
             initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
-
     else:
         initial_global_step = 0
 
@@ -1004,7 +1004,7 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
     generate(accelerator, ema_unet if args.use_ema else None, unet, vae_path, weight_dtype, wandb)
-
+    accelerator.wait_for_everyone()
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
@@ -1121,6 +1121,8 @@ def main(args):
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log(
@@ -1165,6 +1167,7 @@ def main(args):
                 break
 
         generate(accelerator, ema_unet if args.use_ema else None, unet, vae_path, weight_dtype, wandb)
+        accelerator.wait_for_everyone()
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
