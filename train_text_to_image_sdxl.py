@@ -51,12 +51,10 @@ from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0.dev0")
 
 logger = get_logger(__name__)
-
 
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
@@ -64,13 +62,13 @@ DATASET_NAME_MAPPING = {
 
 
 def save_model_card(
-    repo_id: str,
-    images=None,
-    validation_prompt=None,
-    base_model=str,
-    dataset_name=str,
-    repo_folder=None,
-    vae_path=None,
+        repo_id: str,
+        images=None,
+        validation_prompt=None,
+        base_model=str,
+        dataset_name=str,
+        repo_folder=None,
+        vae_path=None,
 ):
     img_str = ""
     for i, image in enumerate(images):
@@ -103,7 +101,7 @@ Special VAE used for training: {vae_path}.
 
 
 def import_model_class_from_model_name_or_path(
-    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -381,7 +379,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+             "More details here: https://arxiv.org/abs/2303.09556.",
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument(
@@ -751,7 +749,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -1184,7 +1182,13 @@ def main(args):
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                accelerator.log(
+                    {
+                        "train_loss": train_loss,
+                        "lr": lr_scheduler.get_last_lr()[0],
+                        "step": global_step,
+                        "epoch": epoch + (step + 1) / len(train_dataloader),
+                    }, step=global_step)
                 train_loss = 0.0
 
                 if accelerator.is_main_process:
