@@ -1246,8 +1246,7 @@ def main(args):
 def generate(accelerator, ema_unet, unet, vae_path, weight_dtype, wandb):
     if accelerator.is_main_process:
         logger.info(
-            f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-            f" {args.validation_prompt}."
+            f"Running validation... \n"
         )
         if args.use_ema:
             # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
