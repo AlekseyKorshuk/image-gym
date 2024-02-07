@@ -60,6 +60,33 @@ DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
+eval_prompts = [
+    "an open metal tin with creamy organic balm inside, resting on a polished wooden surface amid spa accessories, a soft-focus background hinting at bamboo and white towels, a gentle overhead view highlighting the smooth texture of the balm, evoking a tranquil and pure ambiance, with soft natural lighting",
+    "a vintage red and gold popcorn machine with clear glass panels, on a black marble table top, soft bokeh effect from warm fairy lights in the background, three-quarter front view, inviting cinema-night ambiance, faint buttery popcorn scent wafting",
+    "a rounded glass bottle with a wooden cap and gold lettering, positioned atop jagged stones, accented with vibrant orange hibiscus blooms, under a soft pastel-hued twilight sky with an emerging crescent moon, in a side view capturing the bottle's profile and the play of dusk light on its curves",
+    "a sleek black fountain pen with gold trim and a shiny nib, lying across a stack of leather-bound books with gold embossed titles, in a softly lit study with out-of-focus bookshelves in the background, close-up view capturing the reflection on the pen and the texture of the book covers, conveying a sense of luxury and intellectual pursuit",
+    "a pair of matte black over-ear headphones with soft ear cushions, floating above a reflective glossy surface, in an elegant room with paneled walls, a chandelier, and plush armchairs, straight-on camera perspective, bathed in warm golden light with floating musical notes for a magical effect",
+    "three upright bamboo toothbrushes with light bristles, standing on a white surface, surrounded by lush green indoor plants and hanging greenery, with a straight-on eye-level view, in a soft natural daylight setting, conveying an eco-friendly atmosphere",
+    "a matte black water bottle with a centered embossed logo, standing upright amidst a dynamic splash of water, set against a dark background with suspended water droplets, captured in a straight-on view with a spotlight effect creating a dramatic monochromatic scene",
+    "a clear glass bottle filled with sparkling water, strawberries, and basil leaves, centered on a pink and white checkered cloth, with soft shadows and light patterns, a wicker basket, and scattered strawberries and basil around, close-up view highlighting the condensation and translucency of the water",
+    "an antique silver pocket watch with exposed gears and roman numerals, half-buried in beach sand, with the golden light of a setting sun creating a bokeh effect in the background, close-up view capturing the intricate details and the warm, reflective sheen on the metal",
+    "an exquisite diamond necklace with a delicate floral design, resting on a mossy tree stump in the center, surrounded by a mystical forest with sunbeams piercing through the foliage, close-up view showcasing the necklace's brilliance and intricate details, evoking a magical and luxurious feel",
+    "a rose gold wristwatch with a simple face and mesh strap, resting on a cream satin fabric with scattered water droplets, under soft diffused lighting, in a close-up, top-down view, with a blurred background",
+    "a transparent, ribbed glass perfume bottle with a faceted stopper, placed on a reflective surface accompanied by a white rose and a string of pearls, against a backdrop of elegantly draped satin fabric, in a close-up view that captures the bottle's clarity and the soft reflection, conveying a sense of luxury and purity",
+    "a classic deep green tufted armchair with ornate wooden legs, centered on an ornate rug in a grand library, surrounded by towering bookshelves filled with books and warm lighting from wall-mounted lamps, a straight-on view capturing the chair's full front and the room's symmetry, conveying a sophisticated, vintage vibe",
+    "a sophisticated quadcopter drone with extended propellers and an attached camera, hovering in the air with its underside visible, against a breathtaking backdrop of a mountain range during sunset, viewed from below capturing the warm sunlight bathing the drone.",
+    "a modern smartphone with a colorful screen and top display notch, standing upright on a reflective surface with green leaves at the base, against a gradient blue background with soft lighting, in a straight-on, front-facing view",
+    "an ornate gold necklace with intricate filigree and blue gemstones, displayed on a navy blue velvet bust, against a dark blue abstract patterned background, with a frontal close-up view that highlights the jewelry's detailed craftsmanship, set in an elegant and luxurious style with a soft focus on the surrounding draped fabric",
+    "an exquisite ivory wedding dress with a full tulle skirt and detailed beaded bodice, standing center in a grand ballroom, flanked by ornate golden chandeliers and large windows revealing a sunset, captured from a rear perspective to showcase the dress's train and the room's symmetry, with a soft, dreamy ambiance",
+    "white wireless earbuds in an open charging case, resting on a round marble platform, with a pastel coral backdrop and scattered small green spheres, front-facing view slightly above product level, clean and modern vibe",
+    "a sunburst acoustic guitar with visible strings and tuning pegs, leaning against a rustic wooden wall beside a window with streaming sunlight, accompanied by a vintage suitcase, sheet music, and a leather strap on a wooden surface, side perspective with warm afternoon light casting shadows and patterns",
+    "a sleek red sports car with a dynamic side profile, parked on a forest road covered in autumn leaves, surrounded by tall trees with beams of sunlight piercing through the foliage, a low-angle side view capturing the car's curves and glossy finish, with a tranquil early morning or late afternoon ambiance",
+    "a sleek green and silver espresso machine with a digital display, pouring coffee into a clear glass cup, centered on a white marble countertop, in a homey kitchen with wooden utensils and green plants, with a straight-on camera view capturing the warm, inviting atmosphere",
+    "artisanal soaps in hues of cream, green, and brown with moss accents, arranged on a rustic wooden surface surrounded by smooth stones and vibrant moss, against a backdrop of soft-focus ferns in a forest setting, captured from an overhead angled perspective, conveying a natural and tranquil atmosphere, with water droplets on the stones adding a fresh, dewy look",
+    "a sleek silver-dial wristwatch with a black leather strap and polished hands, resting on a reflective dark surface, with a softly lit study room featuring a leather armchair and wooden furniture in the background, captured from a close-up, angled perspective that sharply focuses on the watch and its reflection while softly blurring the background, conveying an air of elegance and sophistication",
+    "a dark bottle of red wine with an ornate label beside a full glass of wine, resting on a stone ledge overlooking a vineyard at sunset, with rows of grapevines under a dramatic sky, straight-on view with sharp focus on the wine, warm and inviting atmosphere, with loose grapes, a napkin, and a spoon on the ledge",
+]
+
 
 def save_model_card(
         repo_id: str,
@@ -691,7 +718,6 @@ def main(args):
         )
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
-
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
@@ -1197,15 +1223,15 @@ def main(args):
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
-            save_model_card(
-                repo_id=repo_id,
-                images=images,
-                validation_prompt=args.validation_prompt,
-                base_model=args.pretrained_model_name_or_path,
-                dataset_name=args.dataset_name,
-                repo_folder=args.output_dir,
-                vae_path=args.pretrained_vae_model_name_or_path,
-            )
+            # save_model_card(
+            #     repo_id=repo_id,
+            #     images=images,
+            #     validation_prompt=args.validation_prompt,
+            #     base_model=args.pretrained_model_name_or_path,
+            #     dataset_name=args.dataset_name,
+            #     repo_folder=args.output_dir,
+            #     vae_path=args.pretrained_vae_model_name_or_path,
+            # )
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
@@ -1218,62 +1244,60 @@ def main(args):
 
 def generate(accelerator, ema_unet, unet, vae_path, weight_dtype, wandb):
     if accelerator.is_main_process:
-        if args.validation_prompt is not None:
-            logger.info(
-                f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                f" {args.validation_prompt}."
+        logger.info(
+            f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+            f" {args.validation_prompt}."
+        )
+        if args.use_ema:
+            # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+            ema_unet.store(unet.parameters())
+            ema_unet.copy_to(unet.parameters())
+
+        # create pipeline
+        vae = AutoencoderKL.from_pretrained(
+            vae_path,
+            subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+            revision=args.revision,
+            variant=args.variant,
+        )
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            vae=vae,
+            unet=accelerator.unwrap_model(unet),
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+        )
+        if args.prediction_type is not None:
+            scheduler_args = {"prediction_type": args.prediction_type}
+            pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+
+        pipeline = pipeline.to(accelerator.device)
+        pipeline.set_progress_bar_config(disable=True)
+
+        # run inference
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+
+        with torch.cuda.amp.autocast():
+            images = [
+                pipeline(prompt=prompt, generator=generator, num_inference_steps=25).images[0]
+                for prompt in eval_prompts
+            ]
+
+        for tracker in accelerator.trackers:
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: {prompt}")
+                        for i, (prompt, image) in enumerate(zip(eval_prompts, images))
+                    ]
+                }
             )
-            if args.use_ema:
-                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                ema_unet.store(unet.parameters())
-                ema_unet.copy_to(unet.parameters())
-
-            # create pipeline
-            vae = AutoencoderKL.from_pretrained(
-                vae_path,
-                subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-                revision=args.revision,
-                variant=args.variant,
-            )
-            pipeline = StableDiffusionXLPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                vae=vae,
-                unet=accelerator.unwrap_model(unet),
-                revision=args.revision,
-                variant=args.variant,
-                torch_dtype=weight_dtype,
-            )
-            if args.prediction_type is not None:
-                scheduler_args = {"prediction_type": args.prediction_type}
-                pipeline.scheduler = pipeline.scheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.set_progress_bar_config(disable=True)
-
-            # run inference
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            pipeline_args = {"prompt": args.validation_prompt}
-
-            with torch.cuda.amp.autocast():
-                images = [
-                    pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
-                    for _ in range(args.num_validation_images)
-                ]
-
-            for tracker in accelerator.trackers:
-                tracker.log(
-                    {
-                        "validation": [
-                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                            for i, image in enumerate(images)
-                        ]
-                    }
-                )
-            if args.use_ema:
-                # Switch back to the original UNet parameters.
-                ema_unet.restore(unet.parameters())
-            del pipeline
-            torch.cuda.empty_cache()
+        if args.use_ema:
+            # Switch back to the original UNet parameters.
+            ema_unet.restore(unet.parameters())
+        del pipeline
+        torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
