@@ -589,7 +589,13 @@ def main():
     vae.requires_grad_(False)
 
     if args.use_ema:
-        ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config,
+        ema_unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant,
+            in_channels=9,
+            ignore_mismatched_sizes=True,
+            low_cpu_mem_usage=False
+        )
+        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config,
                             inv_gamma=1.0,
                             power=3 / 4)
         ema_unet.to(accelerator.device)
