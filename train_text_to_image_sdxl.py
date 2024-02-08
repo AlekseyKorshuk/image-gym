@@ -1070,7 +1070,7 @@ def main(args):
                     current_step=global_step,
                     total_steps=args.num_train_epochs * num_update_steps_per_epoch,
                     num_timesteps=noise_scheduler.config.num_train_timesteps,
-                    strategy='strict'
+                    strategy='cosine'
                 ).to(model_input.device)
                 timesteps = torch.multinomial(weights, bsz, replacement=True).long()
 
