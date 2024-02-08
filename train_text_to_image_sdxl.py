@@ -1070,7 +1070,7 @@ def main(args):
                     current_step=global_step,
                     total_steps=args.num_train_epochs * num_update_steps_per_epoch,
                     num_timesteps=noise_scheduler.config.num_train_timesteps,
-                    strategy='cosine'
+                    strategy='strict'
                 ).to(model_input.device)
                 timesteps = torch.multinomial(weights, bsz, replacement=True).long()
 
@@ -1288,7 +1288,7 @@ def generate(accelerator, ema_unet, unet, vae_path, weight_dtype, wandb):
 
         with torch.cuda.amp.autocast():
             images = [
-                pipeline(prompt=prompt, generator=generator, num_inference_steps=50).images[0]
+                pipeline(prompt=prompt, generator=generator, num_inference_steps=30).images[0]
                 for prompt in eval_prompts
             ]
 
@@ -1328,7 +1328,7 @@ def calculate_timesteps_weights(current_step, total_steps, num_timesteps, strate
     elif strategy == 'strict':
         step_percentage = current_step / total_steps
         center = int(num_timesteps * step_percentage)
-        radius = int(num_timesteps * 0.05)  # 5% of num_timesteps
+        radius = int(num_timesteps * 0.25)  # % of num_timesteps
         start = max(0, center - radius)
         end = min(num_timesteps, center + radius)
         weights[start:end] = 1
