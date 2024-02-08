@@ -1017,7 +1017,7 @@ def main():
 
                 loss_ = F.mse_loss(noise_pred.float(), target.float(), reduction="none")
                 loss_ = loss_.mean(dim=list(range(1, len(loss_.shape)))) * mse_loss_weights
-                loss = loss_.mean().detach().item()
+                loss += loss_.mean().detach().item()
 
     if accelerator.is_main_process:
         loss /= len(validation_dataloader)
