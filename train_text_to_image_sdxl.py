@@ -1165,7 +1165,7 @@ def main(args):
                         "lr": lr_scheduler.get_last_lr()[0],
                         "step": global_step,
                         "epoch": epoch + (step + 1) / len(train_dataloader),
-                        "timesteps": timesteps.detach().cpu().numpy(),
+                        "timesteps": wandb.Histogram(timesteps.detatch().cpu().numpy()),
                     }, step=global_step)
                 train_loss = 0.0
 
