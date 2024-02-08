@@ -1054,18 +1054,25 @@ def main(args):
                     )
 
                 bsz = model_input.shape[0]
-                if args.timestep_bias_strategy == "none":
-                    # Sample a random timestep for each image without bias.
-                    timesteps = torch.randint(
-                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
-                    )
-                else:
-                    # Sample a random timestep for each image, potentially biased by the timestep weights.
-                    # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
-                    weights = generate_timestep_weights(args, noise_scheduler.config.num_train_timesteps).to(
-                        model_input.device
-                    )
-                    timesteps = torch.multinomial(weights, bsz, replacement=True).long()
+                # if args.timestep_bias_strategy == "none":
+                #     # Sample a random timestep for each image without bias.
+                #     timesteps = torch.randint(
+                #         0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                #     )
+                # else:
+                #     # Sample a random timestep for each image, potentially biased by the timestep weights.
+                #     # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
+                #     weights = generate_timestep_weights(args, noise_scheduler.config.num_train_timesteps).to(
+                #         model_input.device
+                #     )
+                #     timesteps = torch.multinomial(weights, bsz, replacement=True).long()
+                weights = calculate_timesteps_weights(
+                    current_step=global_step,
+                    total_steps=args.num_train_epochs * num_update_steps_per_epoch,
+                    num_timesteps=noise_scheduler.config.num_train_timesteps,
+                    strategy='linear'
+                ).to(model_input.device)
+                timesteps = torch.multinomial(weights, bsz, replacement=True).long()
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
@@ -1158,6 +1165,7 @@ def main(args):
                         "lr": lr_scheduler.get_last_lr()[0],
                         "step": global_step,
                         "epoch": epoch + (step + 1) / len(train_dataloader),
+                        "timesteps": timesteps.detach().cpu().numpy(),
                     }, step=global_step)
                 train_loss = 0.0
 
@@ -1280,7 +1288,7 @@ def generate(accelerator, ema_unet, unet, vae_path, weight_dtype, wandb):
 
         with torch.cuda.amp.autocast():
             images = [
-                pipeline(prompt=prompt, generator=generator, num_inference_steps=25).images[0]
+                pipeline(prompt=prompt, generator=generator, num_inference_steps=50).images[0]
                 for prompt in eval_prompts
             ]
 
@@ -1298,6 +1306,41 @@ def generate(accelerator, ema_unet, unet, vae_path, weight_dtype, wandb):
             ema_unet.restore(unet.parameters())
         del pipeline
         torch.cuda.empty_cache()
+
+
+# Update the function to include the "default" strategy
+def calculate_timesteps_weights(current_step, total_steps, num_timesteps, strategy='linear'):
+    """
+    Calculate dynamic weights for timesteps based on the current training progress.
+    """
+    # Initialize weights uniformly at the start
+    weights = torch.zeros(num_timesteps)
+
+    if strategy == 'linear':
+        progress_ratio = current_step / total_steps
+        weights = torch.linspace(1 - progress_ratio, progress_ratio, num_timesteps)
+    elif strategy == 'exponential':
+        progress_ratio = current_step / total_steps
+        weights = torch.exp(torch.linspace(0, 1, num_timesteps) * progress_ratio)
+    elif strategy == 'cosine':
+        progress_ratio = current_step / total_steps
+        weights = 0.5 * (1 + torch.cos(np.pi * progress_ratio * torch.linspace(0, 1, num_timesteps)))
+    elif strategy == 'strict':
+        step_percentage = current_step / total_steps
+        center = int(num_timesteps * step_percentage)
+        radius = int(num_timesteps * 0.05)  # 5% of num_timesteps
+        start = max(0, center - radius)
+        end = min(num_timesteps, center + radius)
+        weights[start:end] = 1
+    elif strategy == 'none':
+        weights.fill_(1)  # Uniform distribution across all timesteps
+    else:
+        raise ValueError("Unsupported strategy")
+
+    # Ensure weights are normalized to sum to 1
+    weights /= weights.sum()
+
+    return weights
 
 
 if __name__ == "__main__":
