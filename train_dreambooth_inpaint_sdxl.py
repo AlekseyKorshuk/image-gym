@@ -317,6 +317,13 @@ def parse_args():
         help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. "
              "Ignored if optimizer is adamW",
     )
+    parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+             "More details here: https://arxiv.org/abs/2303.09556.",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -993,7 +1000,24 @@ def main():
             else:
                 raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-            loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
+            if args.snr_gamma is None:
+                loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
+            else:
+                # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                # This is discussed in Section 4.2 of the same paper.
+                snr = compute_snr(noise_scheduler, timesteps)
+                mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                    dim=1
+                )[0]
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    mse_loss_weights = mse_loss_weights / snr
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    mse_loss_weights = mse_loss_weights / (snr + 1)
+
+                loss_ = F.mse_loss(noise_pred.float(), target.float(), reduction="none")
+                loss_ = loss_.mean(dim=list(range(1, len(loss_.shape)))) * mse_loss_weights
+                loss = loss_.mean().detach().item()
 
     if accelerator.is_main_process:
         loss /= len(validation_dataloader)
