@@ -1090,7 +1090,24 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                loss = F.mse_loss(noise_pred.float(), target.float(), reduction="mean")
+                if args.snr_gamma is None:
+                    loss = F.mse_loss(noise_pred.float(), target.float(), reduction="mean")
+                else:
+                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                    # This is discussed in Section 4.2 of the same paper.
+                    snr = compute_snr(noise_scheduler, timesteps)
+                    mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                        dim=1
+                    )[0]
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        mse_loss_weights = mse_loss_weights / snr
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        mse_loss_weights = mse_loss_weights / (snr + 1)
+
+                    loss = F.mse_loss(noise_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                    loss = loss.mean()
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -1196,7 +1213,24 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
+                if args.snr_gamma is None:
+                    loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
+                else:
+                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                    # This is discussed in Section 4.2 of the same paper.
+                    snr = compute_snr(noise_scheduler, timesteps)
+                    mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                        dim=1
+                    )[0]
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        mse_loss_weights = mse_loss_weights / snr
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        mse_loss_weights = mse_loss_weights / (snr + 1)
+
+                    loss_ = F.mse_loss(noise_pred.float(), target.float(), reduction="none")
+                    loss_ = loss_.mean(dim=list(range(1, len(loss_.shape)))) * mse_loss_weights
+                    loss += loss_.mean().detach().item()
 
         if accelerator.is_main_process:
             loss /= len(validation_dataloader)
