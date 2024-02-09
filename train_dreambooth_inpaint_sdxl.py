@@ -52,12 +52,12 @@ generation_params = {
         "guidance_scale": 10.0,
         "strength": 1.0,
     },
-    "strength_99": {
-        "num_inference_steps": 25,
-        "num_images_per_prompt": 1,
-        "guidance_scale": 10.0,
-        "strength": 0.99,
-    },
+    # "strength_99": {
+    #     "num_inference_steps": 25,
+    #     "num_images_per_prompt": 1,
+    #     "guidance_scale": 10.0,
+    #     "strength": 0.99,
+    # },
 }
 
 
@@ -260,6 +260,12 @@ def parse_args():
         type=float,
         default=5e-6,
         help="Initial learning rate (after the potential warmup period) to use.",
+    )
+    parser.add_argument(
+        "--train_text_encoder",
+        action="store_true",
+        default=False,
+        help="Whenever to train text encoder",
     )
     parser.add_argument(
         "--text_encoder_lr",
@@ -632,25 +638,31 @@ def main():
         )
 
     unet_parameters_with_lr = {"params": unet.parameters(), "lr": args.learning_rate}
-    text_parameters_one_with_lr = {
-        "params": text_encoder_one.parameters(),
-        "weight_decay": args.adam_weight_decay_text_encoder
-        if args.adam_weight_decay_text_encoder
-        else args.adam_weight_decay,
-        "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
-    }
-    text_parameters_two_with_lr = {
-        "params": text_encoder_two.parameters(),
-        "weight_decay": args.adam_weight_decay_text_encoder
-        if args.adam_weight_decay_text_encoder
-        else args.adam_weight_decay,
-        "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
-    }
-    params_to_optimize = [
-        unet_parameters_with_lr,
-        text_parameters_one_with_lr,
-        text_parameters_two_with_lr,
-    ]
+    params_to_optimize = [unet_parameters_with_lr]
+    if args.train_text_encoder:
+        text_encoder_one.train()
+        text_encoder_two.train()
+        params_to_optimize.extend(
+            [
+                {
+                    "params": text_encoder_one.parameters(),
+                    "weight_decay": args.adam_weight_decay_text_encoder
+                    if args.adam_weight_decay_text_encoder
+                    else args.adam_weight_decay,
+                    "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+                },
+                {
+                    "params": text_encoder_two.parameters(),
+                    "weight_decay": args.adam_weight_decay_text_encoder
+                    if args.adam_weight_decay_text_encoder
+                    else args.adam_weight_decay,
+                    "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+                }
+            ]
+        )
+    else:
+        text_encoder_one.requires_grad_(False)
+        text_encoder_two.requires_grad_(False)
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
