@@ -852,11 +852,11 @@ def main():
         min_lr_ratio=0.1,
     )
 
-    print(f"Before accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
+    # print(f"Before accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     unet, optimizer, train_dataloader, validation_dataloader, lr_scheduler = accelerator.prepare(
         unet, optimizer, train_dataloader, validation_dataloader, lr_scheduler
     )
-    print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
+    # print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     torch.utils.data.graph_settings.apply_shuffle_settings(train_dataloader.dataset, shuffle=True)
     print(f"After apply shuffle: {train_dataloader.dataset._shuffle_enabled}")
 
