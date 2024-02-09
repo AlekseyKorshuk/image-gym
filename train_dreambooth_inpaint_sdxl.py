@@ -324,6 +324,8 @@ def parse_args():
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
              "More details here: https://arxiv.org/abs/2303.09556.",
     )
+    parser.add_argument("--noise_offset", type=float, default=0,
+                        help="The scale of noise offset.")  # 0.1 for Emu paper
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -437,8 +439,8 @@ def encode_prompt(input_ids_1, input_ids_2, text_encoders, tokenizers, is_train=
     return prompt_embeds, pooled_prompt_embeds
 
 
-def run_generation(pipe, eval_dataset, generation_params):
-    function = functools.partial(generate, pipe=pipe, generation_params=generation_params)
+def run_generation(pipe, eval_dataset, generation_params, seed=None):
+    function = functools.partial(generate, pipe=pipe, generation_params=generation_params, seed=seed)
     result_ds = eval_dataset.map(function, batched=True, batch_size=2, num_proc=1)
     return [
         wandb.Image(sample["generated_image"], caption=f'{i}: {sample["text"]}')
@@ -446,7 +448,7 @@ def run_generation(pipe, eval_dataset, generation_params):
     ]
 
 
-def generate(batch, pipe, generation_params):
+def generate(batch, pipe, generation_params, seed=None):
     negative_prompt = "watermark, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, " \
                       "morbid, mutilated, mutation, deformed, dehydrated, bad anatomy, bad proportions, " \
                       "floating object, levitating, hallucination"
@@ -468,7 +470,7 @@ def generate(batch, pipe, generation_params):
     images = pipe(
         prompt=batch["text"],
         negative_prompt=negative_prompt,
-        generator=torch.manual_seed(0),
+        generator=torch.manual_seed(seed if seed is not None else torch.seed()),
         image=[pair[1] for pair in pairs],
         mask_image=[pair[0] for pair in pairs],
         **generation_params
@@ -818,12 +820,12 @@ def main():
             # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
         }
 
-    train_dataset = ShufflerIterDataPipe(train_dataset, buffer_size=args.train_batch_size)
+    train_dataset = ShufflerIterDataPipe(train_dataset)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True
     )
-    validation_dataset = ShufflerIterDataPipe(validation_dataset, buffer_size=args.train_batch_size)
+    validation_dataset = ShufflerIterDataPipe(validation_dataset)
     validation_dataloader = torch.utils.data.DataLoader(
         validation_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=False
@@ -850,14 +852,16 @@ def main():
         min_lr_ratio=0.1,
     )
 
-    # print(f"Before accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
+    print(f"Before accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     unet, optimizer, train_dataloader, validation_dataloader, lr_scheduler = accelerator.prepare(
         unet, optimizer, train_dataloader, validation_dataloader, lr_scheduler
     )
-    # torch.utils.data.graph_settings.apply_shuffle_settings(train_dataloader.dataset, shuffle=True)
+    print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
+    torch.utils.data.graph_settings.apply_shuffle_settings(train_dataloader.dataset, shuffle=True)
+    print(f"After apply shuffle: {train_dataloader.dataset._shuffle_enabled}")
+
     if args.use_ema:
         ema_unet.to(accelerator.device)
-    # print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     accelerator.register_for_checkpointing(lr_scheduler)
 
     weight_dtype = torch.float32
@@ -943,9 +947,15 @@ def main():
             if args.enable_xformers_memory_efficient_attention:
                 pipeline.enable_xformers_memory_efficient_attention()
             generation_logs = {
-                media_title: run_generation(pipeline, eval_dataset, gen_params)
+                f"seed_0_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=0)
                 for media_title, gen_params in generation_params.items()
             }
+            generation_logs.update(
+                {
+                    f"random_seed_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=None)
+                    for media_title, gen_params in generation_params.items()
+                }
+            )
             accelerator.log(generation_logs, step=global_step)
             if args.use_ema:
                 # Switch back to the original UNet parameters.
@@ -974,6 +984,11 @@ def main():
             mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
 
             noise = torch.randn_like(latents)
+            if args.noise_offset:
+                # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                noise += args.noise_offset * torch.randn(
+                    (masked_latents.shape[0], masked_latents.shape[1], 1, 1), device=masked_latents.device
+                )
             bsz = latents.shape[0]
             timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
             timesteps = timesteps.long()
@@ -1158,9 +1173,15 @@ def main():
                 if args.enable_xformers_memory_efficient_attention:
                     pipeline.enable_xformers_memory_efficient_attention()
                 generation_logs = {
-                    media_title: run_generation(pipeline, eval_dataset, gen_params)
+                    f"seed_0_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=0)
                     for media_title, gen_params in generation_params.items()
                 }
+                generation_logs.update(
+                    {
+                        f"random_seed_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=None)
+                        for media_title, gen_params in generation_params.items()
+                    }
+                )
                 accelerator.log(generation_logs, step=global_step)
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
