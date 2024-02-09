@@ -858,7 +858,6 @@ def main():
     )
     # print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
     torch.utils.data.graph_settings.apply_shuffle_settings(train_dataloader.dataset, shuffle=True)
-    print(f"After apply shuffle: {train_dataloader.dataset._shuffle_enabled}")
 
     if args.use_ema:
         ema_unet.to(accelerator.device)
