@@ -223,6 +223,12 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--eval_every_epoch",
+        type=int,
+        default=1,
+        help="The number of epochs to wait before evaluating the model.",
+    )
+    parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -1069,9 +1075,11 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
-                   ema_unet if args.use_ema else None,
-                   text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
+        # use args.eval_every_epoch
+        if (epoch + 1) % args.eval_every_epoch == 0:
+            evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
+                       ema_unet if args.use_ema else None,
+                       text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
         accelerator.wait_for_everyone()
 
     # Create the pipeline using the trained modules and save it.
@@ -1103,6 +1111,13 @@ def main():
 def evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet, ema_unet, text_encoders, tokenizers,
                noise_scheduler, compute_embeddings, weight_dtype, global_step):
     if accelerator.is_main_process:
+        if global_step == 0:
+            accelerator.log({
+                "original": [
+                    wandb.Image(sample["image"], caption=f'{i}: {sample["text"]}')
+                    for i, sample in enumerate(eval_dataset)
+                ]
+            }, step=global_step)
         with torch.cuda.amp.autocast():
             if args.use_ema:
                 # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
@@ -1117,12 +1132,6 @@ def evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet
             )
             if args.enable_xformers_memory_efficient_attention:
                 pipeline.enable_xformers_memory_efficient_attention()
-            accelerator.log({
-                "original": [
-                    wandb.Image(sample["image"], caption=f'{i}: {sample["text"]}')
-                    for i, sample in enumerate(eval_dataset)
-                ]
-            }, step=global_step)
             accelerator.log({
                 f"seed_0_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=0)
                 for media_title, gen_params in generation_params.items()
