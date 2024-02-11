@@ -755,8 +755,8 @@ def main():
         eval_dataset = eval_dataset["validation"] if "validation" in eval_dataset.keys() else eval_dataset["train"]
         train_dataset = load_dataset(args.dataset_path)
         if "validation" in list(train_dataset.keys()):
-            train_dataset = train_dataset["train"]
             validation_dataset = train_dataset["validation"]
+            train_dataset = train_dataset["train"]
         else:
             train_dataset = load_dataset(args.dataset_path, split="train[:95%]")
             validation_dataset = load_dataset(args.dataset_path, split="train[95%:]")
