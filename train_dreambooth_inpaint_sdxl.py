@@ -298,6 +298,12 @@ def parse_args():
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument(
+        "--min_lr_ratio",
+        type=float,
+        default=0.1,
+        help="The minimum learning rate as a ratio of the initial learning rate.",
+    )
+    parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
