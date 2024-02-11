@@ -1,0 +1,229 @@
+Category,Product
+Electronics,Smartphone 
+Electronics,Laptop
+Electronics,Headphones
+Electronics,Smartwatch
+Electronics,DSLR Camera
+Electronics,Portable Speaker
+Electronics,Tablet
+Electronics,E-Reader
+Electronics,Drone
+Electronics,Game Console
+Electronics,Gaming Mouse
+Electronics,External Hard Drive
+Electronics,Wireless Router
+Electronics,Smart Home Device
+Electronics,Electric Toothbrush
+Electronics,Security Camera
+Electronics,TV
+Electronics,Wireless Earbuds
+Fashion & Accessories,Sunglasses
+Fashion & Accessories,Leather Wallet
+Fashion & Accessories,Handbag
+Fashion & Accessories,Watch
+Fashion & Accessories,Jewelry Set
+Fashion & Accessories,Necklace
+Fashion & Accessories,Earings
+Fashion & Accessories,Bracelets
+Fashion & Accessories,Locket
+Fashion & Accessories,High Heels
+Fashion & Accessories,Sneakers
+Fashion & Accessories,Dress Shirt
+Fashion & Accessories,Dress
+Fashion & Accessories,Suit
+Fashion & Accessories,Scarf
+Fashion & Accessories,Belt
+Fashion & Accessories,Hat
+Fashion & Accessories,Jeans
+Fashion & Accessories,T-Shirt
+Fashion & Accessories,Pen
+Fashion & Accessories,Pencil
+Fashion & Accessories,Card Holder
+Beauty & Personal Care,Makeup Kit
+Beauty & Personal Care,Perfume Bottle
+Beauty & Personal Care,Skincare Set
+Beauty & Personal Care,Hair Dryer
+Beauty & Personal Care,Electric Shaver
+Beauty & Personal Care,Lipstick
+Beauty & Personal Care,Nail Polish Set
+Beauty & Personal Care,Eyeshadow Palette
+Beauty & Personal Care,Bath Bombs
+Beauty & Personal Care,Sunscreen
+Beauty & Personal Care,Deodorant
+Beauty & Personal Care,Shower Gel
+Beauty & Personal Care,Eyebrow Pencil
+Beauty & Personal Care,Face Masks
+Beauty & Personal Care,Manicure Set
+Home & Kitchen,Coffee Maker
+Home & Kitchen,Blender
+Home & Kitchen,Toaster
+Home & Kitchen,Dutch Oven
+Home & Kitchen,Set of Kitchen Knives
+Home & Kitchen,Dinnerware Set
+Home & Kitchen,Glassware Set
+Home & Kitchen,Cutlery Set
+Home & Kitchen,Non-stick Cookware Set
+Home & Kitchen,Bedding Set
+Home & Kitchen,Throw Blanket
+Home & Kitchen,Decorative Pillows
+Home & Kitchen,Wall Art
+Home & Kitchen,Table Lamp
+Home & Kitchen,Bookshelf
+Home & Kitchen,Desk
+Home & Kitchen,Chair
+Home & Kitchen,Sofa
+Home & Kitchen,Rug
+Home & Kitchen,Candle Holder
+Home & Kitchen,Vase
+Home & Kitchen,Mug
+Home & Kitchen,Planter
+Home & Kitchen,Humidifier
+Home & Kitchen,Air Purifier
+Home & Kitchen,Essential Oil Diffuser
+Home & Kitchen,Vacuum Cleaner
+Home & Kitchen,Washing Machine
+Home & Kitchen,Refrigerator
+Sports & Outdoors,Fitness Tracker
+Sports & Outdoors,Yoga Mat
+Sports & Outdoors,Dumbbells
+Sports & Outdoors,Tennis Racket
+Sports & Outdoors,Basketball
+Sports & Outdoors,Football
+Sports & Outdoors,Skateboard
+Sports & Outdoors,Bicycle
+Sports & Outdoors,Golf
+Sports & Outdoors,Camping Tent
+Sports & Outdoors,Backpack
+Sports & Outdoors,Sunglasses for Sports
+Sports & Outdoors,Water Bottle
+Sports & Outdoors,Protein Shaker
+Sports & Outdoors,Hiking Boots
+Sports & Outdoors,Fishing Rod
+Sports & Outdoors,Binoculars
+Sports & Outdoors,Action Camera
+Sports & Outdoors,Snowboard
+Sports & Outdoors,Ski Goggles
+Toys & Games,Educational Toys
+Toys & Games,Board Games
+Toys & Games,Puzzle
+Toys & Games,Dolls
+Toys & Games,Action Figures
+Toys & Games,Outdoor Play Equipment
+Toys & Games,Game Disk
+Toys & Games,Electronic Toys
+Arts & Crafts,"Art Supplies (Paints, Brushes, Canvas, etc.)"
+Arts & Crafts,Craft Kits
+Arts & Crafts,Sewing & Knitting Supplies
+Arts & Crafts,Scrapbooking Materials
+Arts & Crafts,Jewelry Making Kits
+Office Supplies,Writing Instruments
+Office Supplies,Notebooks
+Office Supplies,Organizers & Planners
+Office Supplies,Office Electronics
+Office Supplies,Office Furniture
+Office Supplies,Desk Organizer
+Office Supplies,Flash Drive
+Automotive,Car Accessories
+Automotive,Car Care Products
+Automotive,Automotive Tools
+Pet Supplies,Pet Food & Treats
+Pet Supplies,Pet Beds
+Pet Supplies,Grooming Products
+Pet Supplies,Toys & Accessories
+Pet Supplies,Aquariums
+Books & Stationery,Fiction & Non-fiction Books
+Books & Stationery,Educational Materials
+Books & Stationery,Journals & Diaries
+Books & Stationery,Greeting Cards & Wrapping Supplies
+Health & Wellness,Nutritional Supplements
+Health & Wellness,Fitness & Wellness Gadgets
+Health & Wellness,Medical Supplies
+Health & Wellness,Health Monitors
+Music & Entertainment,Musical Instruments
+Music & Entertainment,"Audio & Video Media (e.g., Vinyl Records, DVDs, etc.)"
+Music & Entertainment,Streaming Devices
+Music & Entertainment,Concert & Movie Memorabilia
+Food & Beverages,Gourmet Foods
+Food & Beverages,Snacks
+Food & Beverages,Confectionery
+Food & Beverages,Beverages
+Food & Beverages,Coffee (Cup and To-Go)
+Food & Beverages,Cooking Ingredients
+Food & Beverages,Fruit
+Food & Beverages,Vegetable
+Food & Beverages,Fish
+Food & Beverages,Meat
+Food & Beverages,Fast Food
+Travel & Leisure,Luggage & Travel Accessories
+Travel & Leisure,Travel Books & Maps
+Travel & Leisure,Camping & Travel Gear
+Travel & Leisure,Leisure Activities & Experiences
+Art & Fashion,Artistic Prints and Posters
+Art & Fashion,Paintings
+Culture,Cultural Attire
+Culture,Traditional Crafts
+Culture,Religious Artifacts
+Culture,Cultural Festivals and Events Merchandise
+Transportation,Automobiles
+Transportation,Motorbikes
+Transportation,Bicycles
+Transportation,Skateboards
+Transportation,"Public Transit Models (Buses, Trains, etc.)"
+Transportation,Aviation and Nautical Models
+Transportation,Electric Scooter
+Nature,Home Plant
+Nature,Outdoor Gear for Nature Activities
+Nature,Sustainable and Eco-friendly Products
+Other,Spa Products
+Other,Gifts
+Other,Flowers
+Other,Meditation Cushions
+Other,Stress Balls
+Animals,Dog
+Animals,Cat
+Animals,Frog
+Animals,Home Fish
+Animals,"Bird (e.g., Parrot, Canary, etc.)"
+Animals,Hamster
+Animals,Guinea Pig
+Animals,Turtle
+Animals,Rabbit
+Animals,"Lizard (e.g., Gecko, etc.)"
+Animals,Snake
+Animals,Horse
+Animals,Goat
+Animals,Pig
+Animals,Sheep
+Animals,Cow
+Animals,Chicken
+Animals,Duck
+Animals,Bee
+Animals,Butterfly
+Animals,Insects
+Animals,"Insects (e.g., Ladybug, Praying Mantis, etc.)"
+Animals,"Aquarium Fish (e.g., Betta, Goldfish, etc.)"
+Animals,Coral and Marine Invertebrates
+Animals,"Spider (e.g., Tarantula, etc.)"
+Animals,Scorpion
+Animals,Ferret
+Animals,Chinchilla
+Animals,Hedgehog
+Animals,Koi Fish 
+Animals,"Sea Creatures (e.g., Dolphins, Sharks, etc.)"
+Animals,"Arthropods (e.g., Crabs, Lobsters, etc.)"
+Animals,Reptiles and Amphibians
+Animals,"Invertebrates (e.g., Octopus, Squid, etc.)"
+Gym Equipment,Treadmill
+Gym Equipment,Stationary Bicycle
+Gym Equipment,Elliptical Machine
+Gym Equipment,Stair Climber
+Gym Equipment,Squat Racks
+Gym Equipment,Leg Press Machine
+Gym Equipment,Pull-Up Bar
+Gym Equipment,Wrist Wraps
+Gym Equipment,Shoulder Press Machine
+Gym Equipment,Lat Pull-Down Machine
+Gym Equipment,Leg Curl Machine
+Gym Equipment,Weight Benches
+Gym Equipment,Punching Bag
+Gym Equipment,Box equipment

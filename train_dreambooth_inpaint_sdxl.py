@@ -753,8 +753,13 @@ def main():
     with accelerator.main_process_first():
         eval_dataset = load_dataset(args.validation_dataset_path)
         eval_dataset = eval_dataset["validation"] if "validation" in eval_dataset.keys() else eval_dataset["train"]
-        train_dataset = load_dataset(args.dataset_path, split="train[:95%]")
-        validation_dataset = load_dataset(args.dataset_path, split="train[95%:]")
+        train_dataset = load_dataset(args.dataset_path)
+        if "validation" in list(train_dataset.keys()):
+            train_dataset = train_dataset["train"]
+            validation_dataset = train_dataset["validation"]
+        else:
+            train_dataset = load_dataset(args.dataset_path, split="train[:95%]")
+            validation_dataset = load_dataset(args.dataset_path, split="train[95%:]")
 
     # del text_encoders, tokenizers
     gc.collect()
@@ -942,113 +947,9 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    if accelerator.is_main_process:
-        with torch.cuda.amp.autocast():
-            if args.use_ema:
-                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                ema_unet.store(unet.parameters())
-                ema_unet.copy_to(unet.parameters())
-            pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                vae=vae,
-                unet=accelerator.unwrap_model(unet),
-                text_encoder=accelerator.unwrap_model(text_encoder_one),
-                text_encoder_2=accelerator.unwrap_model(text_encoder_two),
-            )
-            if args.enable_xformers_memory_efficient_attention:
-                pipeline.enable_xformers_memory_efficient_attention()
-            generation_logs = {
-                f"seed_0_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=0)
-                for media_title, gen_params in generation_params.items()
-            }
-            generation_logs.update(
-                {
-                    f"random_seed_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=None)
-                    for media_title, gen_params in generation_params.items()
-                }
-            )
-            accelerator.log(generation_logs, step=global_step)
-            if args.use_ema:
-                # Switch back to the original UNet parameters.
-                ema_unet.restore(unet.parameters())
-
-    accelerator.wait_for_everyone()
-
-    loss = 0
-    for batch in tqdm(validation_dataloader, desc="Validation"):
-        with torch.no_grad():
-            latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-            latents = latents * vae.config.scaling_factor
-
-            masked_latents = vae.encode(
-                batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
-            ).latent_dist.sample()
-            masked_latents = masked_latents * vae.config.scaling_factor
-
-            masks = batch["masks"]
-            mask = torch.stack(
-                [
-                    torch.nn.functional.interpolate(mask, size=(args.resolution // 8, args.resolution // 8))
-                    for mask in masks
-                ]
-            )
-            mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
-
-            noise = torch.randn_like(latents)
-            if args.noise_offset:
-                # https://www.crosslabs.org//blog/diffusion-with-offset-noise
-                noise += args.noise_offset * torch.randn(
-                    (masked_latents.shape[0], masked_latents.shape[1], 1, 1), device=masked_latents.device
-                )
-            bsz = latents.shape[0]
-            timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-            timesteps = timesteps.long()
-
-            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-            latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
-
-            embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
-            unet_added_conditions = {
-                "text_embeds": embeddings_dict["text_embeds"],
-                "time_ids": embeddings_dict["time_ids"]
-            }
-            noise_pred = unet(
-                latent_model_input, timesteps,
-                encoder_hidden_states=embeddings_dict["prompt_embeds"],
-                added_cond_kwargs=unet_added_conditions,
-            ).sample
-
-            if noise_scheduler.config.prediction_type == "epsilon":
-                target = noise
-            elif noise_scheduler.config.prediction_type == "v_prediction":
-                target = noise_scheduler.get_velocity(latents, noise, timesteps)
-            else:
-                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
-            if args.snr_gamma is None:
-                loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
-            else:
-                # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
-                # Since we predict the noise instead of x_0, the original formulation is slightly changed.
-                # This is discussed in Section 4.2 of the same paper.
-                snr = compute_snr(noise_scheduler, timesteps)
-                mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
-                    dim=1
-                )[0]
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    mse_loss_weights = mse_loss_weights / snr
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    mse_loss_weights = mse_loss_weights / (snr + 1)
-
-                loss_ = F.mse_loss(noise_pred.float(), target.float(), reduction="none")
-                loss_ = loss_.mean(dim=list(range(1, len(loss_.shape)))) * mse_loss_weights
-                loss += loss_.mean().detach().item()
-
-    if accelerator.is_main_process:
-        loss /= len(validation_dataloader)
-        logger.info(f"Validation loss: {loss}")
-        accelerator.log({"val_loss": loss}, step=global_step)
+    evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
+               ema_unet if args.use_ema else None,
+               text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
@@ -1168,106 +1069,9 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        if accelerator.is_main_process:
-            with torch.cuda.amp.autocast():
-                if args.use_ema:
-                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
-                pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    vae=vae,
-                    unet=accelerator.unwrap_model(unet),
-                    text_encoder=accelerator.unwrap_model(text_encoder_one),
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two),
-                )
-                if args.enable_xformers_memory_efficient_attention:
-                    pipeline.enable_xformers_memory_efficient_attention()
-                generation_logs = {
-                    f"seed_0_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=0)
-                    for media_title, gen_params in generation_params.items()
-                }
-                generation_logs.update(
-                    {
-                        f"random_seed_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=None)
-                        for media_title, gen_params in generation_params.items()
-                    }
-                )
-                accelerator.log(generation_logs, step=global_step)
-                if args.use_ema:
-                    # Switch back to the original UNet parameters.
-                    ema_unet.restore(unet.parameters())
-
-        loss = 0
-        for batch in tqdm(validation_dataloader, desc="Validation"):
-            with torch.no_grad():
-                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * vae.config.scaling_factor
-
-                masked_latents = vae.encode(
-                    batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
-                ).latent_dist.sample()
-                masked_latents = masked_latents * vae.config.scaling_factor
-
-                masks = batch["masks"]
-                mask = torch.stack(
-                    [
-                        torch.nn.functional.interpolate(mask, size=(args.resolution // 8, args.resolution // 8))
-                        for mask in masks
-                    ]
-                )
-                mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
-
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
-
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-                latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
-
-                embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
-                unet_added_conditions = {
-                    "text_embeds": embeddings_dict["text_embeds"],
-                    "time_ids": embeddings_dict["time_ids"]
-                }
-                noise_pred = unet(
-                    latent_model_input, timesteps,
-                    encoder_hidden_states=embeddings_dict["prompt_embeds"],
-                    added_cond_kwargs=unet_added_conditions,
-                ).sample
-
-                if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
-                elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
-                if args.snr_gamma is None:
-                    loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
-                else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
-                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
-                    # This is discussed in Section 4.2 of the same paper.
-                    snr = compute_snr(noise_scheduler, timesteps)
-                    mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
-                        dim=1
-                    )[0]
-                    if noise_scheduler.config.prediction_type == "epsilon":
-                        mse_loss_weights = mse_loss_weights / snr
-                    elif noise_scheduler.config.prediction_type == "v_prediction":
-                        mse_loss_weights = mse_loss_weights / (snr + 1)
-
-                    loss_ = F.mse_loss(noise_pred.float(), target.float(), reduction="none")
-                    loss_ = loss_.mean(dim=list(range(1, len(loss_.shape)))) * mse_loss_weights
-                    loss += loss_.mean().detach().item()
-
-        if accelerator.is_main_process:
-            loss /= len(validation_dataloader)
-            logger.info(f"Validation loss: {loss}")
-            accelerator.log({"val_loss": loss}, step=global_step)
+        evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
+                   ema_unet if args.use_ema else None,
+                   text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
         accelerator.wait_for_everyone()
 
     # Create the pipeline using the trained modules and save it.
@@ -1294,6 +1098,112 @@ def main():
             )
 
     accelerator.end_training()
+
+
+def evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet, ema_unet, text_encoders, tokenizers,
+               noise_scheduler, compute_embeddings, weight_dtype, global_step):
+    if accelerator.is_main_process:
+        with torch.cuda.amp.autocast():
+            if args.use_ema:
+                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                ema_unet.store(unet.parameters())
+                ema_unet.copy_to(unet.parameters())
+            pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                vae=vae,
+                unet=accelerator.unwrap_model(unet),
+                text_encoder=accelerator.unwrap_model(text_encoders[0]),
+                text_encoder_2=accelerator.unwrap_model(text_encoders[1]),
+            )
+            if args.enable_xformers_memory_efficient_attention:
+                pipeline.enable_xformers_memory_efficient_attention()
+            accelerator.log({
+                "original": [
+                    wandb.Image(sample["image"], caption=f'{i}: {sample["text"]}')
+                    for i, sample in enumerate(eval_dataset)
+                ]
+            }, step=global_step)
+            accelerator.log({
+                f"seed_0_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=0)
+                for media_title, gen_params in generation_params.items()
+            }, step=global_step)
+            accelerator.log({
+                f"random_seed_{media_title}": run_generation(pipeline, eval_dataset, gen_params, seed=None)
+                for media_title, gen_params in generation_params.items()
+            }, step=global_step)
+            if args.use_ema:
+                # Switch back to the original UNet parameters.
+                ema_unet.restore(unet.parameters())
+    loss = 0
+    for batch in tqdm(validation_dataloader, desc="Validation"):
+        with torch.no_grad():
+            latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
+            latents = latents * vae.config.scaling_factor
+
+            masked_latents = vae.encode(
+                batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
+            ).latent_dist.sample()
+            masked_latents = masked_latents * vae.config.scaling_factor
+
+            masks = batch["masks"]
+            mask = torch.stack(
+                [
+                    torch.nn.functional.interpolate(mask, size=(args.resolution // 8, args.resolution // 8))
+                    for mask in masks
+                ]
+            )
+            mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
+
+            noise = torch.randn_like(latents)
+            bsz = latents.shape[0]
+            timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+            timesteps = timesteps.long()
+
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
+            latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
+
+            embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
+            unet_added_conditions = {
+                "text_embeds": embeddings_dict["text_embeds"],
+                "time_ids": embeddings_dict["time_ids"]
+            }
+            noise_pred = unet(
+                latent_model_input, timesteps,
+                encoder_hidden_states=embeddings_dict["prompt_embeds"],
+                added_cond_kwargs=unet_added_conditions,
+            ).sample
+
+            if noise_scheduler.config.prediction_type == "epsilon":
+                target = noise
+            elif noise_scheduler.config.prediction_type == "v_prediction":
+                target = noise_scheduler.get_velocity(latents, noise, timesteps)
+            else:
+                raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+
+            if args.snr_gamma is None:
+                loss += F.mse_loss(noise_pred.float(), target.float(), reduction="mean").detach().item()
+            else:
+                # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                # This is discussed in Section 4.2 of the same paper.
+                snr = compute_snr(noise_scheduler, timesteps)
+                mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                    dim=1
+                )[0]
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    mse_loss_weights = mse_loss_weights / snr
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    mse_loss_weights = mse_loss_weights / (snr + 1)
+
+                loss_ = F.mse_loss(noise_pred.float(), target.float(), reduction="none")
+                loss_ = loss_.mean(dim=list(range(1, len(loss_.shape)))) * mse_loss_weights
+                loss += loss_.mean().detach().item()
+
+    if accelerator.is_main_process:
+        loss /= len(validation_dataloader)
+        logger.info(f"Validation loss: {loss}")
+        accelerator.log({"val_loss": loss}, step=global_step)
 
 
 if __name__ == "__main__":
