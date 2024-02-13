@@ -857,12 +857,13 @@ def main():
             return examples
 
         with accelerator.main_process_first():
-            dataset = dataset.map(preprocess_train, batched=True, batch_size=32)
+            from datasets.fingerprint import Hasher
+            new_fingerprint = Hasher.hash(args)
+            dataset = dataset.map(preprocess_train, batched=True, batch_size=32, new_fingerprint=new_fingerprint)
 
         return dataset
 
     train_dataset = prepare_train_dataset(train_dataset, accelerator)
-    print(train_dataset)
     validation_dataset = prepare_train_dataset(validation_dataset, accelerator)
 
     def collate_fn(examples):
