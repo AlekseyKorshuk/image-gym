@@ -26,10 +26,10 @@ def generate_prompts(sample):
         {"role": "system", "content": prompt1},
         {"role": "user", "content": f"Category: {sample['category']}\nObject: {sample['product']}"},
     ]
-    completion = client.chat.completions.create(model="gpt-4-turbo-preview", messages=messages, temperature=0.7)
+    completion = client.chat.completions.create(model="gpt-4-turbo-preview", messages=messages, temperature=1.0)
     messages.append({"role": "assistant", "content": completion.choices[0].message.content})
     messages.append({"role": "user", "content": prompt2})
-    completion = client.chat.completions.create(model="gpt-4-turbo-preview", messages=messages, temperature=0.7)
+    completion = client.chat.completions.create(model="gpt-4-turbo-preview", messages=messages, temperature=1.0)
     completion_content = completion.choices[0].message.content
     json_string = completion_content[completion_content.index("{"):]
     json_string = json_string[::-1][json_string[::-1].index("}"):]
@@ -126,7 +126,7 @@ prompt2 = """Critique your response in plain text and plan how to improve it the
 - Are the prompts follow the rules of good product photography: Composition, Lighting, Color and Contrast, Subject and Background?
 - Is the product single (if not specified otherwise)?
 
-Critique in details and refine your response with the same JSON format as before!
+Critique in details inside `thoughts_and_planning` and refine your response with the same JSON format as before!
 """
 
 
