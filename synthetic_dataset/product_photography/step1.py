@@ -126,7 +126,7 @@ prompt2 = """Critique your response in plain text and plan how to improve it the
 - Are the prompts follow the rules of good product photography: Composition, Lighting, Color and Contrast, Subject and Background?
 - Is the product single (if not specified otherwise)?
 
-Critique in plain text and refine your response with the same JSON format as before!
+Critique in details and refine your response with the same JSON format as before!
 """
 
 
