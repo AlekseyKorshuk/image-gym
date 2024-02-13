@@ -816,6 +816,7 @@ def main():
 
             masked_images = torch.stack(examples["instance_masks"])
             masked_images = masked_images.squeeze()
+            masked_images = masked_images.unsqueeze(1).repeat(1, 3, 1, 1, 1)
             masked_images = masked_images.to(memory_format=torch.contiguous_format).float()
             # print("masked_images.shape", masked_images.shape)
 
