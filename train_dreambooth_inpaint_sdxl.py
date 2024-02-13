@@ -834,6 +834,22 @@ def main():
             examples["masked_latents"] = masked_latents.cpu()
 
             if not args.train_text_encoder:
+                input_ids_1 = tokenizer_one(
+                    [example["text"] for example in examples],
+                    padding="max_length",
+                    max_length=tokenizer_one.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                ).input_ids
+                input_ids_2 = tokenizer_two(
+                    [example["text"] for example in examples],
+                    padding="max_length",
+                    max_length=tokenizer_two.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                ).input_ids
+                examples["input_ids_1"] = input_ids_1
+                examples["input_ids_2"] = input_ids_2
                 embeddings = compute_embeddings(examples, text_encoders, tokenizers, is_train=False)
                 embeddings = {k: v.cpu() for k, v in embeddings.items()}
                 examples.update(embeddings)
@@ -860,23 +876,8 @@ def main():
 
         # add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
         # add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
-        input_ids_1 = tokenizer_one(
-            [example["text"] for example in examples],
-            padding="max_length",
-            max_length=tokenizer_one.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        ).input_ids
-        input_ids_2 = tokenizer_two(
-            [example["text"] for example in examples],
-            padding="max_length",
-            max_length=tokenizer_two.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        ).input_ids
+
         response = {
-            "input_ids_1": input_ids_1,
-            "input_ids_2": input_ids_2,
             "masks": torch.stack([example["instance_masks"] for example in examples]),
             "pixel_values": pixel_values,
             "masked_images": masked_images,
@@ -889,6 +890,27 @@ def main():
                     "text_embeds": torch.stack([example["text_embeds"] for example in examples]),
                     "time_ids": torch.stack([example["time_ids"] for example in examples]),
                     "prompt_embeds": torch.stack([example["prompt_embeds"] for example in examples]),
+                }
+            )
+        else:
+            input_ids_1 = tokenizer_one(
+                [example["text"] for example in examples],
+                padding="max_length",
+                max_length=tokenizer_one.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            ).input_ids
+            input_ids_2 = tokenizer_two(
+                [example["text"] for example in examples],
+                padding="max_length",
+                max_length=tokenizer_two.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            ).input_ids
+            response.update(
+                {
+                    "input_ids_1": input_ids_1,
+                    "input_ids_2": input_ids_2,
                 }
             )
         return response
