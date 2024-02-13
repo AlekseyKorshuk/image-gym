@@ -857,7 +857,7 @@ def main():
             return examples
 
         with accelerator.main_process_first():
-            dataset = dataset.map(preprocess_train, batched=True, batch_size=args.train_batch_size)
+            dataset = dataset.map(preprocess_train, batched=True, batch_size=128)
 
         return dataset
 
@@ -1059,9 +1059,9 @@ def main():
                     embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
                 else:
                     embeddings_dict = {
-                        "text_embeds": batch["text_embeds"],
-                        "time_ids": batch["time_ids"],
-                        "prompt_embeds": batch["prompt_embeds"]
+                        "text_embeds": batch["text_embeds"].to(dtype=weight_dtype),
+                        "time_ids": batch["time_ids"].to(dtype=weight_dtype),
+                        "prompt_embeds": batch["prompt_embeds"].to(dtype=weight_dtype)
                     }
                 unet_added_conditions = {
                     "text_embeds": embeddings_dict["text_embeds"],
