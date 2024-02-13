@@ -38,7 +38,11 @@ def midjourney_imagine(prompt, version="6.0"):
         "webhook_secret": ""
     }
     response = requests.post(endpoint, headers=headers, json=data)
-    return response.json()
+    try:
+        return response.json()
+    except Exception as e:
+        print(response.text)
+        raise e
 
 
 if __name__ == "__main__":
