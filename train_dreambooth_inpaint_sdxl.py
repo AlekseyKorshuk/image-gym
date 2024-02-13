@@ -835,14 +835,14 @@ def main():
 
             if not args.train_text_encoder:
                 input_ids_1 = tokenizer_one(
-                    [example["text"] for example in examples],
+                    examples["text"],
                     padding="max_length",
                     max_length=tokenizer_one.model_max_length,
                     truncation=True,
                     return_tensors="pt",
                 ).input_ids
                 input_ids_2 = tokenizer_two(
-                    [example["text"] for example in examples],
+                    examples["text"],
                     padding="max_length",
                     max_length=tokenizer_two.model_max_length,
                     truncation=True,
