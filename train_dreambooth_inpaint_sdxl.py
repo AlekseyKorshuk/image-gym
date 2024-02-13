@@ -878,7 +878,7 @@ def main():
         optimizer,
         num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
         num_training_steps=args.max_train_steps,
-        min_lr_ratio=0.1,
+        min_lr_ratio=args.min_lr_ratio,
     )
 
     # print(f"Before accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")

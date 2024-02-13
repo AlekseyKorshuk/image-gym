@@ -10,7 +10,7 @@ from openai import OpenAI
 
 client = OpenAI()
 
-save_path = "/Users/alekseykorshuk/PycharmProjects/image-gym/synthetic_dataset/product_photography/data_tiny/midjourney_images_step4"
+save_path = "./data/midjourney_images_step4"
 
 os.makedirs(save_path, exist_ok=True)
 
@@ -145,7 +145,7 @@ Your response should follow JSON format with step-by-step thinking:
         ...
     },
     ...
-    "overal_thoughts: "", // Your final observations and decision based on the per-image thoughts. Be very harsh!!!
+    "overall_thoughts: "", // Your final observations and decision based on the per-image thoughts. Be very harsh!!!
     "decision": int, // Image label or 0 if all images are bad
 }
 ```
@@ -175,11 +175,9 @@ Overall, be very harsh!!!
 You must better reject all images, then select one bad image!"""
 
 if __name__ == "__main__":
-    ds = load_from_disk("./output/step3")
-    # ds = load_dataset("AlekseyKorshuk/product-photography-tiny-prompts-tasks-images")
+    ds = load_dataset("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks-collage")
     ds = ds.map(apply_1, num_proc=10)
     ds = ds.filter(lambda x: x != 0, input_columns=["decision"])
-    # ds = ds.filter(lambda x: x is not None, input_columns=["image"])
     ds = ds.map(apply_2, num_proc=10)
     ds = ds.remove_columns(["decision", "midjourney_image"])
-    ds.push_to_hub("AlekseyKorshuk/product-photography-tiny-prompts-tasks-images")
+    ds.push_to_hub("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks-collage-images")

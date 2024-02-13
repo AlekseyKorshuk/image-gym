@@ -6,8 +6,11 @@ from datasets import Dataset, DatasetDict
 from openai import OpenAI
 
 client = OpenAI()
-output_path = "/Users/alekseykorshuk/PycharmProjects/image-gym/synthetic_dataset/product_photography/data_tiny/prompts"
-input_path = "/Users/alekseykorshuk/PycharmProjects/image-gym/synthetic_dataset/product_photography/input.csv"
+input_path = "./input.csv"
+
+output_path = "./data/prompts"
+
+os.makedirs(output_path, exist_ok=True)
 
 
 def hash_text(text):
@@ -41,7 +44,7 @@ def generate_prompts(sample):
     return result
 
 
-prompt1 = """You are an expert in Prompt Engineering for Product Photography. You are helping to build a diverse dataset of prompts for product photographies. You will be given a category and product from user and your task is to response in JSON format in the following way to come up with self-contained diverse dataset of different prompts from simple to complicated, for very different and diverse ideas. Make sure to follow the RULES!!!
+prompt1 = """You are an expert in Prompt Engineering for Product Photography. You are helping to build a diverse dataset of prompts for product photographies. You will be given a product from user and your task is to response in JSON format in the following way to come up with self-contained diverse dataset of different prompts from simple to complicated, for very different ideas. Make sure to follow the RULES!!!
 
 # Response Format:
 
@@ -49,22 +52,21 @@ prompt1 = """You are an expert in Prompt Engineering for Product Photography. Yo
 {
     "thoughts_and_planning": "Explain your thoughts and planning for the prompts, how you will approach the task, etc.",
     "train_prompts": [
-        // List of 5 train prompts with diverse complexity and ideas
+        // List of 15 train prompts with diverse complexity and ideas
     ],
     "test_prompts": [
-        // List of 1 test prompts to validate training
+        // List of 2 test prompts to validate training
     ]
 }
 ```
 
 ## Notes:
 - East/Medium/Hard does NOT mean to write short or long prompts -- utilise all possible tokens! It means the complexity of generating such image for AI!
-- Be creative!
+- Be creative! You can place products under ocean, in space, on the moon, etc. -- be creative!
 - Make sure it is product photography like for advertising, not some random photo!
 
 
 # How to write the prompt
-
 ## Prompt structure:
 ```
 {detailed product description}, {specific product placement in the image}, {rich background and environment details}, {precise product/camera view}, {distinct styles or vibes, if any}, {any additional relevant details}
@@ -104,15 +106,27 @@ prompt1 = """You are an expert in Prompt Engineering for Product Photography. Yo
 ### Prompt Rules:
 - Limit to 75 CLIP tokens, approximately 60 words, utilizing the full length but avoiding overflow.
 - Ensure clarity and accuracy without introducing hallucinations or unrelated elements.
-- Product should be clearly visible on the image, consider this when creating the composition."""
+- Product should be clearly visible on the image, consider this when creating the composition.
 
-prompt2 = """Critique your response and plan how to improve it the dataset:
+
+# Product Photography Rules:
+
+1. Composition: The image should adhere to certain principles of professional photography composition, including the “Rule Of Thirds”, “Depth and Layering”, and more. Negative examples may include imbalance in visual weight, such as when all focal subjects are concentrated on one side of the frame, subjects captured from less flattering angles, or instances where the primary subject is obscured, or surrounding unimportant objects are distracting from the subject.
+
+2. Lighting: You are looking for dynamic lighting with balanced exposure that enhances the image, for example, lighting that originates from an angle, casting highlights on select areas of the background and subject(s). You try to avoid artificial or lackluster lighting, as well as excessively dim or overexposed light.
+
+3. Color and Contrast: Prefer images with vibrant colors and strong color contrast. Avoid monochromatic images or those where a single color dominates the entire frame.
+
+4. Subject and Background: The image should have a sense of depth between the foreground and background elements. The background should be uncluttered but not overly simplistic or dull. The focused subjects must be intentionally placed within the frame, ensuring that all critical details are clearly visible without compromise. For instance, in a portrait, the primary subject of image should not extend beyond the frame or be obstructed. Furthermore, the level of detail on the foreground subject is extremely important. Additionally, product should have reasonable size on the image, so that a human can clearly identify it."""
+
+prompt2 = """Critique your response in plain text and plan how to improve it the dataset:
 - Is the dataset diverse enough in terms of ideas?
 - Is the dataset diverse enough in terms of complexity?
-- Are the prompts clear and concise? Do they follow all the rules and structure?
+- Are the prompts clear and concise? Do they follow all the prompt rules and structure?
+- Are the prompts follow the rules of good product photography: Composition, Lighting, Color and Contrast, Subject and Background?
 - Is the product single (if not specified otherwise)?
 
-After critique, refine your response following the same JSON format as before!
+Critique in plain text and refine your response with the same JSON format as before!
 """
 
 
@@ -158,4 +172,4 @@ if __name__ == "__main__":
     ds = ds.map(generate_prompts, num_proc=10)
     ds = postprocess_dataset(ds)
     print(ds)
-    ds.push_to_hub("AlekseyKorshuk/product-photography-tiny-prompts")
+    ds.push_to_hub("AlekseyKorshuk/product-photography-v1-tiny-prompts")

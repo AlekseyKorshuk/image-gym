@@ -5,7 +5,9 @@ import os
 import requests
 from datasets import Dataset, DatasetDict, load_dataset
 
-save_path = "/Users/alekseykorshuk/PycharmProjects/image-gym/synthetic_dataset/product_photography/data_tiny/midjourney"
+save_path = "./data/midjourney"
+
+os.makedirs(save_path, exist_ok=True)
 
 
 def apply(sample):
@@ -26,8 +28,9 @@ def apply(sample):
 def midjourney_imagine(prompt, version="6.0"):
     endpoint = "https://api.midjourneyapi.xyz/mj/v2/imagine"
     headers = {"X-API-KEY": os.environ.get("MIDJOURNEY_API_KEY")}
+    style = random.choice([100, 250, 500, 750])
     data = {
-        "prompt": prompt.strip() + f", product photography --v {version}",
+        "prompt": prompt.strip() + f", hyper-realistic product photography --s {style} --v {version}",
         "aspect_ratio": "1:1",
         "process_mode": "fast",
         "webhook_endpoint": "",
@@ -38,6 +41,6 @@ def midjourney_imagine(prompt, version="6.0"):
 
 
 if __name__ == "__main__":
-    ds = load_dataset("AlekseyKorshuk/product-photography-tiny-prompts")
+    ds = load_dataset("AlekseyKorshuk/product-photography-v1-tiny-prompts")
     ds = ds.map(apply)
-    ds.push_to_hub("AlekseyKorshuk/product-photography-tiny-prompts-tasks")
+    ds.push_to_hub("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks")

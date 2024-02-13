@@ -6,7 +6,7 @@ import requests
 from datasets import Dataset, DatasetDict, load_dataset
 from PIL import Image
 
-save_path = "/Users/alekseykorshuk/PycharmProjects/image-gym/synthetic_dataset/product_photography/data_tiny/midjourney_images"
+save_path = "./data/midjourney_images"
 
 os.makedirs(save_path, exist_ok=True)
 
@@ -54,7 +54,7 @@ def fetch_task(task_id):
 
 
 if __name__ == "__main__":
-    ds = load_dataset("AlekseyKorshuk/product-photography-tiny-prompts-tasks")
+    ds = load_dataset("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks")
     ds = ds.map(apply, num_proc=10)
     ds = ds.filter(lambda x: x == "finished", input_columns=["status"])
-    ds.save_to_disk("./output/step3")
+    ds.push_to_hub("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks-collage")
