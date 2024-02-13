@@ -813,10 +813,10 @@ def main():
             examples["pixel_values"] = [image_transforms(image) for image in images]
             examples["instance_images"] = [pair[1] for pair in pairs]
             examples["instance_masks"] = [pair[0] for pair in pairs]
-            masked_images = torch.stack([example["instance_images"] for example in examples])
+            masked_images = torch.stack(examples["instance_masks"])
             masked_images = masked_images.to(memory_format=torch.contiguous_format).float()
 
-            pixel_values = torch.stack([example["pixel_values"] for example in examples])
+            pixel_values = torch.stack(examples["pixel_values"])
             latents = vae.encode(pixel_values.to(device=vae.device, dtype=weight_dtype)).latent_dist.sample()
             latents = latents * vae.config.scaling_factor
 
