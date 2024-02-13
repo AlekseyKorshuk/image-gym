@@ -857,7 +857,7 @@ def main():
             return examples
 
         with accelerator.main_process_first():
-            dataset = dataset.map(preprocess_train, batched=True, batch_size=128)
+            dataset = dataset.map(preprocess_train, batched=True, batch_size=32)
 
         return dataset
 
