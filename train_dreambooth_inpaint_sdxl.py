@@ -841,6 +841,7 @@ def main():
         return dataset
 
     train_dataset = prepare_train_dataset(train_dataset, accelerator)
+    print(train_dataset)
     validation_dataset = prepare_train_dataset(validation_dataset, accelerator)
 
     def collate_fn(examples):
@@ -984,9 +985,9 @@ def main():
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
 
-    evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
-               ema_unet if args.use_ema else None,
-               text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
+    # evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
+    #            ema_unet if args.use_ema else None,
+    #            text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
