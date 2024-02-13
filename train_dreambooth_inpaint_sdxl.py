@@ -822,16 +822,16 @@ def main():
 
             pixel_values = torch.stack(examples["pixel_values"])
             # print("pixel_values.shape", pixel_values.shape)
-            latents = vae.encode(pixel_values.to(device=vae.device)).latent_dist.sample()
+            latents = vae.encode(pixel_values.to(device=vae.device, dtype=weight_dtype)).latent_dist.sample()
             latents = latents * vae.config.scaling_factor
 
             masked_latents = vae.encode(
-                masked_images.reshape(pixel_values.shape).to(device=vae.device)
+                masked_images.reshape(pixel_values.shape).to(device=vae.device, dtype=weight_dtype)
             ).latent_dist.sample()
             masked_latents = masked_latents * vae.config.scaling_factor
 
-            examples["latents"] = latents.cpu()
-            examples["masked_latents"] = masked_latents.cpu()
+            examples["latents"] = latents.to(dtype=torch.float32, device="cpu")
+            examples["masked_latents"] = masked_latents.to(dtype=torch.float32, device="cpu")
 
             if not args.train_text_encoder:
                 input_ids_1 = tokenizer_one(
@@ -851,7 +851,7 @@ def main():
                 examples["input_ids_1"] = input_ids_1
                 examples["input_ids_2"] = input_ids_2
                 embeddings = compute_embeddings(examples, text_encoders, tokenizers, is_train=False)
-                embeddings = {k: v.cpu() for k, v in embeddings.items()}
+                embeddings = {k: v.to(dtype=torch.float32, device="cpu") for k, v in embeddings.items()}
                 examples.update(embeddings)
 
             return examples
@@ -1028,8 +1028,8 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 # print("IDS:", batch["ids"])
-                latents = batch["latents"]
-                masked_latents = batch["masked_latents"]
+                latents = batch["latents"].to(dtype=weight_dtype)
+                masked_latents = batch["masked_latents"].to(dtype=weight_dtype)
                 masks = batch["masks"]
 
                 # resize the mask to latents shape as we concatenate the mask to the latents
