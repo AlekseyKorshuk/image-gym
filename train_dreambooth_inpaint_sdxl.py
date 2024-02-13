@@ -735,6 +735,12 @@ def main():
             safeguard_warmup=args.prodigy_safeguard_warmup,
         )
 
+    weight_dtype = torch.float32
+    if args.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif args.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
     def compute_embeddings(batch, text_encoders, tokenizers, is_train=True):
@@ -758,6 +764,12 @@ def main():
 
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
+    # Move text_encode and vae to gpu.
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
     # Let's first compute all the embeddings so that we can free up the text encoders
     # from memory.
     text_encoders = [text_encoder_one, text_encoder_two]
@@ -767,8 +779,8 @@ def main():
         eval_dataset = eval_dataset["validation"] if "validation" in eval_dataset.keys() else eval_dataset["train"]
         train_dataset = load_dataset(args.dataset_path)
         if "validation" in list(train_dataset.keys()):
-            validation_dataset = train_dataset["validation"]
-            train_dataset = train_dataset["train"]
+            validation_dataset = train_dataset["validation"].select(range(0, 10))
+            train_dataset = train_dataset["train"].select(range(0, 100))
         else:
             train_dataset = load_dataset(args.dataset_path, split="train[:95%]")
             validation_dataset = load_dataset(args.dataset_path, split="train[95%:]")
@@ -801,6 +813,25 @@ def main():
             examples["pixel_values"] = [image_transforms(image) for image in images]
             examples["instance_images"] = [pair[1] for pair in pairs]
             examples["instance_masks"] = [pair[0] for pair in pairs]
+            masked_images = torch.stack([example["instance_images"] for example in examples])
+            masked_images = masked_images.to(memory_format=torch.contiguous_format).float()
+
+            pixel_values = torch.stack([example["pixel_values"] for example in examples])
+            latents = vae.encode(pixel_values.to(device=vae.device, dtype=weight_dtype)).latent_dist.sample()
+            latents = latents * vae.config.scaling_factor
+
+            masked_latents = vae.encode(
+                masked_images.reshape(pixel_values.shape).to(device=vae.device, dtype=weight_dtype)
+            ).latent_dist.sample()
+            masked_latents = masked_latents * vae.config.scaling_factor
+
+            examples["latents"] = latents.cpu()
+            examples["masked_latents"] = masked_latents.cpu()
+
+            if not args.train_text_encoder:
+                embeddings = compute_embeddings(examples, text_encoders, tokenizers, is_train=False)
+                embeddings = {k: v.cpu() for k, v in embeddings.items()}
+                examples.update(embeddings)
 
             return examples
 
@@ -837,17 +868,24 @@ def main():
             truncation=True,
             return_tensors="pt",
         ).input_ids
-        return {
+        response = {
             "input_ids_1": input_ids_1,
             "input_ids_2": input_ids_2,
-            # "ids": [example["id"] for example in examples],
-            # "text": [example["text"] for example in examples],
             "masks": torch.stack([example["instance_masks"] for example in examples]),
             "pixel_values": pixel_values,
             "masked_images": masked_images,
-            # "prompt_ids": prompt_ids,
-            # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
+            "latents": torch.stack([example["latents"] for example in examples]),
+            "masked_latents": torch.stack([example["masked_latents"] for example in examples]),
         }
+        if not args.train_text_encoder:
+            response.update(
+                {
+                    "text_embeds": torch.stack([example["text_embeds"] for example in examples]),
+                    "time_ids": torch.stack([example["time_ids"] for example in examples]),
+                    "prompt_embeds": torch.stack([example["prompt_embeds"] for example in examples]),
+                }
+            )
+        return response
 
     train_dataset = ShufflerIterDataPipe(train_dataset)
     train_dataloader = torch.utils.data.DataLoader(
@@ -891,19 +929,6 @@ def main():
     if args.use_ema:
         ema_unet.to(accelerator.device)
     accelerator.register_for_checkpointing(lr_scheduler)
-
-    weight_dtype = torch.float32
-    if args.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif args.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move text_encode and vae to gpu.
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
-    vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -975,17 +1000,10 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 # print("IDS:", batch["ids"])
-
-                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-                latents = latents * vae.config.scaling_factor
-
-                # Convert masked images to latent space
-                masked_latents = vae.encode(
-                    batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
-                ).latent_dist.sample()
-                masked_latents = masked_latents * vae.config.scaling_factor
-
+                latents = batch["latents"]
+                masked_latents = batch["masked_latents"]
                 masks = batch["masks"]
+
                 # resize the mask to latents shape as we concatenate the mask to the latents
                 mask = torch.stack(
                     [
@@ -1009,7 +1027,14 @@ def main():
                 # concatenate the noised latents with the mask and the masked latents
                 latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
 
-                embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
+                if args.train_text_encoder:
+                    embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
+                else:
+                    embeddings_dict = {
+                        "text_embeds": batch["text_embeds"],
+                        "time_ids": batch["time_ids"],
+                        "prompt_embeds": batch["prompt_embeds"]
+                    }
                 unet_added_conditions = {
                     "text_embeds": embeddings_dict["text_embeds"],
                     "time_ids": embeddings_dict["time_ids"]
@@ -1152,14 +1177,8 @@ def evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet
     loss = 0
     for batch in tqdm(validation_dataloader, desc="Validation"):
         with torch.no_grad():
-            latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
-            latents = latents * vae.config.scaling_factor
-
-            masked_latents = vae.encode(
-                batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)
-            ).latent_dist.sample()
-            masked_latents = masked_latents * vae.config.scaling_factor
-
+            latents = batch["latents"]
+            masked_latents = batch["masked_latents"]
             masks = batch["masks"]
             mask = torch.stack(
                 [
@@ -1178,7 +1197,14 @@ def evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet
 
             latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
 
-            embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
+            if args.train_text_encoder:
+                embeddings_dict = compute_embeddings(batch, text_encoders, tokenizers)
+            else:
+                embeddings_dict = {
+                    "text_embeds": batch["text_embeds"],
+                    "time_ids": batch["time_ids"],
+                    "prompt_embeds": batch["prompt_embeds"]
+                }
             unet_added_conditions = {
                 "text_embeds": embeddings_dict["text_embeds"],
                 "time_ids": embeddings_dict["time_ids"]
