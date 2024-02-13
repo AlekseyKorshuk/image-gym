@@ -836,7 +836,7 @@ def main():
             return examples
 
         with accelerator.main_process_first():
-            dataset = dataset.map(preprocess_train, batched=True, batch_size=args.per_device_train_batch_size)
+            dataset = dataset.map(preprocess_train, batched=True, batch_size=args.train_batch_size)
 
         return dataset
 
