@@ -169,7 +169,7 @@ def postprocess_dataset(ds):
 if __name__ == "__main__":
     ds = Dataset.from_csv(input_path)
     ds = ds.rename_columns({"Category": "category", "Product": "product"})
-    ds = ds.map(generate_prompts, num_proc=10)
+    ds = ds.map(generate_prompts, num_proc=20)
     ds = postprocess_dataset(ds)
     print(ds)
     ds.push_to_hub("AlekseyKorshuk/product-photography-v1-tiny-prompts")
