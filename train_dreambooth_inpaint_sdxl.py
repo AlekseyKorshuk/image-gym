@@ -836,7 +836,7 @@ def main():
             return examples
 
         with accelerator.main_process_first():
-            dataset = dataset.with_transform(preprocess_train)
+            dataset = dataset.map(preprocess_train)
 
         return dataset
 
