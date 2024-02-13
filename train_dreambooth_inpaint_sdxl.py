@@ -822,11 +822,11 @@ def main():
 
             pixel_values = torch.stack(examples["pixel_values"])
             # print("pixel_values.shape", pixel_values.shape)
-            latents = vae.encode(pixel_values.to(device=vae.device, dtype=weight_dtype)).latent_dist.sample()
+            latents = vae.encode(pixel_values.to(device=vae.device)).latent_dist.sample()
             latents = latents * vae.config.scaling_factor
 
             masked_latents = vae.encode(
-                masked_images.reshape(pixel_values.shape).to(device=vae.device, dtype=weight_dtype)
+                masked_images.reshape(pixel_values.shape).to(device=vae.device)
             ).latent_dist.sample()
             masked_latents = masked_latents * vae.config.scaling_factor
 
