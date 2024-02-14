@@ -176,8 +176,8 @@ You must better reject all images, then select one bad image!"""
 
 if __name__ == "__main__":
     ds = load_dataset("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks-collage")
-    ds = ds.map(apply_1, num_proc=10)
+    ds = ds.map(apply_1, num_proc=10, writer_batch_size=100)
     ds = ds.filter(lambda x: x != 0, input_columns=["decision"])
-    ds = ds.map(apply_2, num_proc=10)
+    ds = ds.map(apply_2, num_proc=10, writer_batch_size=100)
     ds = ds.remove_columns(["decision", "midjourney_image"])
     ds.push_to_hub("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks-collage-images")
