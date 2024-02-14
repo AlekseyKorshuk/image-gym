@@ -37,7 +37,12 @@ def apply(sample):
     image = None
     if task["status"] == "finished":
         url = f"https://img.midjourneyapi.xyz/mj/{sample['task_id']}.png"
-        response = requests.get(url)
+        while True:
+            try:
+                response = requests.get(url)
+                break
+            except requests.exceptions.ChunkedEncodingError:
+                print("ChunkedEncodingError, retrying...")
         with open(output_path, "wb") as f:
             f.write(response.content)
         image = Image.open(output_path)
