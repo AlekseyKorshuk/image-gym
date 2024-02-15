@@ -8,6 +8,7 @@ from argilla.client.feedback.utils import image_to_html
 from datasets import load_dataset, concatenate_datasets
 import tqdm
 from PIL import Image
+import concurrent.futures
 
 api_url = os.environ.get("ARGILLA_API_URL")
 api_key = os.environ.get("ARGILLA_API_KEY")
@@ -68,26 +69,35 @@ def get_concat_h(im1, im2):
     return dst
 
 
-records = []
-for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
-    # if i == 10:
-    #     break
+def process_sample(sample):
     try:
         image = sample["midjourney_image"].resize((512, 512))
         byte_buffer = io.BytesIO()
         image.save(byte_buffer, format='PNG')
         byte_string = byte_buffer.getvalue()
-        records.append(
-            rg.FeedbackRecord(
-                fields={
-                    "sample": image_to_html(byte_string, file_type="png"),
-                },
-                external_id=sample["id"],
-            ),
+        record = rg.FeedbackRecord(
+            fields={"sample": image_to_html(byte_string, file_type="png")},
+            external_id=sample["id"],
         )
+        return record
     except Exception as e:
         print(e)
-        continue
+        return None
+
+
+def main(ds):
+    records = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Prepare for progress bar
+        futures = [executor.submit(process_sample, sample) for sample in ds]
+        for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(ds)):
+            result = future.result()
+            if result is not None:
+                records.append(result)
+    return records
+
+
+records = main(ds)
 dataset.add_records(records)
 try:
     dataset.push_to_argilla(name="midjourney-v0", workspace="admin")
