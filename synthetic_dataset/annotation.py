@@ -89,7 +89,7 @@ def main(ds):
     records = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
         # Prepare for progress bar
-        futures = [executor.submit(process_sample, sample) for sample in ds]
+        futures = [executor.submit(process_sample, sample) for sample in tqdm.tqdm(ds)]
         for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(ds)):
             result = future.result()
             if result is not None:
