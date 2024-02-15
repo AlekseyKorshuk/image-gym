@@ -70,8 +70,8 @@ def get_concat_h(im1, im2):
 
 records = []
 for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
-    if i == 10:
-        break
+    # if i == 10:
+    #     break
     try:
         image = sample["midjourney_image"].resize((1024, 1024))
         byte_buffer = io.BytesIO()
@@ -90,7 +90,7 @@ for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
         continue
 dataset.add_records(records)
 try:
-    dataset.push_to_argilla(name="midjourney-v0-test", workspace="admin")
+    dataset.push_to_argilla(name="midjourney-v0", workspace="admin")
 except Exception as ex:
     print(ex)
 
