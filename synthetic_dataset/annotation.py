@@ -69,18 +69,22 @@ def get_concat_h(im1, im2):
 
 records = []
 for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
-    image = sample["midjourney_image"].resize((1024, 1024))
-    byte_buffer = io.BytesIO()
-    image.save(byte_buffer, format='PNG')
-    byte_string = byte_buffer.getvalue()
-    records.append(
-        rg.FeedbackRecord(
-            fields={
-                "sample": image_to_html(byte_string, file_type="png"),
-            },
-            external_id=sample["id"],
-        ),
-    )
+    try:
+        image = sample["midjourney_image"].resize((1024, 1024))
+        byte_buffer = io.BytesIO()
+        image.save(byte_buffer, format='PNG')
+        byte_string = byte_buffer.getvalue()
+        records.append(
+            rg.FeedbackRecord(
+                fields={
+                    "sample": image_to_html(byte_string, file_type="png"),
+                },
+                external_id=sample["id"],
+            ),
+        )
+    except Exception as e:
+        print(e)
+        continue
 dataset.add_records(records)
 try:
     dataset.push_to_argilla(name="midjourney-v0", workspace="admin")
