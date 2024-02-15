@@ -73,7 +73,7 @@ for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
     # if i == 10:
     #     break
     try:
-        image = sample["midjourney_image"].resize((1024, 1024))
+        image = sample["midjourney_image"].resize((512, 512))
         byte_buffer = io.BytesIO()
         image.save(byte_buffer, format='PNG')
         byte_string = byte_buffer.getvalue()
