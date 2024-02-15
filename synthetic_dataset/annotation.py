@@ -57,6 +57,7 @@ ds = concatenate_datasets(
         load_dataset("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks-collage", split="validation"),
     ]
 )
+print(ds)
 
 
 def get_concat_h(im1, im2):
@@ -68,7 +69,7 @@ def get_concat_h(im1, im2):
 
 records = []
 for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
-    image = sample["image"].resize((1024, 1024))
+    image = sample["midjourney_image"].resize((1024, 1024))
     byte_buffer = io.BytesIO()
     image.save(byte_buffer, format='PNG')
     byte_string = byte_buffer.getvalue()
