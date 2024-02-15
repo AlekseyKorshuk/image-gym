@@ -12,7 +12,8 @@ from PIL import Image
 api_url = os.environ.get("ARGILLA_API_URL")
 api_key = os.environ.get("ARGILLA_API_KEY")
 
-rg.init(api_url=api_url, api_key=api_key, workspace="admin")
+rg.init(api_url=api_url, api_key=api_key, workspace="admin",
+        extra_headers={"Authorization": f"Bearer {os.environ['HF_TOKEN']}"})
 
 # Configure the FeedbackDataset
 dataset = rg.FeedbackDataset(
@@ -69,6 +70,8 @@ def get_concat_h(im1, im2):
 
 records = []
 for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
+    if i == 100:
+        break
     try:
         image = sample["midjourney_image"].resize((1024, 1024))
         byte_buffer = io.BytesIO()
@@ -87,9 +90,9 @@ for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
         continue
 dataset.add_records(records)
 try:
-    dataset.push_to_argilla(name="midjourney-v0", workspace="admin")
-except:
-    pass
+    dataset.push_to_argilla(name="midjourney-v0-test", workspace="admin")
+except Exception as ex:
+    print(ex)
 
 # feedback = rg.FeedbackDataset.from_argilla("vivid-v0", workspace="admin")
 #
