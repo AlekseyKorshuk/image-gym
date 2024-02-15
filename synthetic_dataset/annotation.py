@@ -70,7 +70,7 @@ def get_concat_h(im1, im2):
 
 records = []
 for i, sample in tqdm.tqdm(enumerate(ds), total=len(ds)):
-    if i == 100:
+    if i == 10:
         break
     try:
         image = sample["midjourney_image"].resize((1024, 1024))
