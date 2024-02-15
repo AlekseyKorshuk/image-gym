@@ -93,7 +93,7 @@ try:
     dataset.push_to_argilla(name="midjourney-v0", workspace="admin")
 except Exception as ex:
     print(ex)
-
+breakpoint()
 # feedback = rg.FeedbackDataset.from_argilla("vivid-v0", workspace="admin")
 #
 # data = []
