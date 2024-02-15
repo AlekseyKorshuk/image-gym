@@ -69,7 +69,8 @@ def get_concat_h(im1, im2):
     return dst
 
 
-def process_sample(sample):
+def process_sample(index, ds):
+    sample = ds[index]
     try:
         image = sample["midjourney_image"].resize((512, 512))
         byte_buffer = io.BytesIO()
@@ -89,7 +90,14 @@ def main(ds):
     records = []
     with concurrent.futures.ThreadPoolExecutor() as executor:
         # Prepare for progress bar
-        futures = [executor.submit(process_sample, sample) for sample in tqdm.tqdm(ds)]
+        futures = [
+            executor.submit(
+                process_sample,
+                index,
+                ds
+            )
+            for index in tqdm.trange(len(ds))
+        ]
         for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(ds)):
             result = future.result()
             if result is not None:
