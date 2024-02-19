@@ -51,24 +51,27 @@ def get_selected_image(collage: Image, decision: int) -> Image:
 
 dataset = []
 for sample in tqdm.tqdm(ds):
-    annotations = []
-    for i in range(1, 5):
-        if data[sample["id"]][f"quality_{i}"] == "GOOD":
-            annotations.append(i)
+    try:
+        annotations = []
+        for i in range(1, 5):
+            if data[sample["id"]][f"quality_{i}"] == "GOOD":
+                annotations.append(i)
 
-    for annotation in annotations:
-        image = get_selected_image(sample["midjourney_image"], annotation)
-        image_path = os.path.join(save_path, f"{sample['id']}_{annotation}.png")
-        image.save(image_path)
-        dataset.append(
-            {
-                "id": sample["id"] + "_" + str(annotation),
-                "image": Image.open(image_path),
-                "category": sample["category"],
-                "product": sample["product"],
-                "prompt": sample["prompt"],
-            }
-        )
+        for annotation in annotations:
+            image = get_selected_image(sample["midjourney_image"], annotation)
+            image_path = os.path.join(save_path, f"{sample['id']}_{annotation}.png")
+            image.save(image_path)
+            dataset.append(
+                {
+                    "id": sample["id"] + "_" + str(annotation),
+                    "image": Image.open(image_path),
+                    "category": sample["category"],
+                    "product": sample["product"],
+                    "prompt": sample["prompt"],
+                }
+            )
+    except Exception as ex:
+        print(ex)
 
 new_ds = Dataset.from_list(dataset)
 new_ds.push_to_hub("AlekseyKorshuk/product-photography-v1-tiny-prompts-tasks-collage-filtered")
