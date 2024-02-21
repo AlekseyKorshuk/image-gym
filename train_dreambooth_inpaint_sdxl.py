@@ -1086,8 +1086,8 @@ def main():
             evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
                        ema_unet if args.use_ema else None,
                        text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
-        accelerator.wait_for_everyone()
-
+            accelerator.wait_for_everyone()
+    accelerator.wait_for_everyone()
     # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
