@@ -962,9 +962,8 @@ def main():
     evaluation(accelerator, args, validation_dataloader, eval_dataset, vae, unet,
                ema_unet if args.use_ema else None,
                text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
-
+    unet.train()
     for epoch in range(first_epoch, args.num_train_epochs):
-        unet.train()
         for step, batch in enumerate(train_dataloader):
             # Skip steps until we reach the resumed step
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
@@ -1087,6 +1086,7 @@ def main():
                        ema_unet if args.use_ema else None,
                        text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
             accelerator.wait_for_everyone()
+            unet.train()
     accelerator.wait_for_everyone()
     # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
