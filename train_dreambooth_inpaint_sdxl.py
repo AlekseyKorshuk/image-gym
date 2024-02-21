@@ -52,12 +52,12 @@ generation_params = {
         "guidance_scale": 10.0,
         "strength": 1.0,
     },
-    # "strength_99": {
-    #     "num_inference_steps": 25,
-    #     "num_images_per_prompt": 1,
-    #     "guidance_scale": 10.0,
-    #     "strength": 0.99,
-    # },
+    "strength_99": {
+        "num_inference_steps": 25,
+        "num_images_per_prompt": 1,
+        "guidance_scale": 10.0,
+        "strength": 0.99,
+    },
 }
 
 
