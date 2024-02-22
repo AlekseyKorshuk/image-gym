@@ -964,7 +964,9 @@ def main():
                text_encoders, tokenizers, noise_scheduler, compute_embeddings, weight_dtype, global_step)
     unet.train()
     for epoch in range(first_epoch, args.num_train_epochs):
-        for step, batch in enumerate(train_dataloader):
+        step = -1
+        for batch in train_dataloader:
+            step += 1
             # Skip steps until we reach the resumed step
             if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
                 if step % args.gradient_accumulation_steps == 0:
