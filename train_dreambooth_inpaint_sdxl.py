@@ -40,6 +40,10 @@ from diffusers import (
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_xformers_available
 
+import torch.multiprocessing
+
+torch.multiprocessing.set_sharing_strategy('file_system')
+
 # Will error if the minimal version of diffusers is not installed.
 check_min_version("0.13.0.dev0")
 
@@ -853,13 +857,13 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True,
-        # persistent_workers=True, num_workers=1
+        persistent_workers=True, num_workers=os.cpu_count()
     )
     validation_dataset = ShufflerIterDataPipe(validation_dataset)
     validation_dataloader = torch.utils.data.DataLoader(
         validation_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=False,
-        # persistent_workers=True, num_workers=1
+        persistent_workers=True, num_workers=os.cpu_count()
     )
 
     # Scheduler and math around the number of training steps.
@@ -1043,9 +1047,9 @@ def main():
                             # This is discussed in Section 4.2 of the same paper.
                             snr = compute_snr(noise_scheduler, timesteps)
                             mse_loss_weights = \
-                            torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
-                                dim=1
-                            )[0]
+                                torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                                    dim=1
+                                )[0]
                             if noise_scheduler.config.prediction_type == "epsilon":
                                 mse_loss_weights = mse_loss_weights / snr
                             elif noise_scheduler.config.prediction_type == "v_prediction":
