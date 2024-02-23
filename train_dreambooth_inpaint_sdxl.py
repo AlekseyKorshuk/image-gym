@@ -857,13 +857,13 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True,
-        persistent_workers=True, num_workers=os.cpu_count()
+        # persistent_workers=True, num_workers=os.cpu_count()
     )
     validation_dataset = ShufflerIterDataPipe(validation_dataset)
     validation_dataloader = torch.utils.data.DataLoader(
         validation_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=False,
-        persistent_workers=True, num_workers=os.cpu_count()
+        # persistent_workers=True, num_workers=os.cpu_count()
     )
 
     # Scheduler and math around the number of training steps.
