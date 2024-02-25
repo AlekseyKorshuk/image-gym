@@ -53,13 +53,13 @@ generation_params = {
     "strength_1": {
         "num_inference_steps": 25,
         "num_images_per_prompt": 1,
-        "guidance_scale": 10.0,
+        "guidance_scale": 8.5,
         "strength": 1.0,
     },
     "strength_99": {
         "num_inference_steps": 25,
         "num_images_per_prompt": 1,
-        "guidance_scale": 10.0,
+        "guidance_scale": 8.5,
         "strength": 0.99,
     },
 }
