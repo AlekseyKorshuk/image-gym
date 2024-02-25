@@ -346,6 +346,13 @@ def parse_args():
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
              "More details here: https://arxiv.org/abs/2303.09556.",
     )
+    parser.add_argument(
+        "--proportion_empty_prompts",
+        type=float,
+        default=0,
+        help="Proportion of empty prompts to use in the training set to improve Classifier-Free Diffusion Guidance. "
+             "More details here: https://arxiv.org/abs/2207.12598.",
+    )
     parser.add_argument("--noise_offset", type=float, default=0,
                         help="The scale of noise offset.")  # 0.1 for Emu paper
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
@@ -827,15 +834,20 @@ def main():
 
         # add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
         # add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
+        prompts = [example["text"] for example in examples]
+        prompts = [
+            prompt if args.proportion_empty_prompts < random.random() else ""
+            for prompt in prompts
+        ]
         input_ids_1 = tokenizer_one(
-            [example["text"] for example in examples],
+            prompts,
             padding="max_length",
             max_length=tokenizer_one.model_max_length,
             truncation=True,
             return_tensors="pt",
         ).input_ids
         input_ids_2 = tokenizer_two(
-            [example["text"] for example in examples],
+            prompts,
             padding="max_length",
             max_length=tokenizer_two.model_max_length,
             truncation=True,
