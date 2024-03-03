@@ -865,13 +865,13 @@ def main():
             # "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
         }
 
-    train_dataset = ShufflerIterDataPipe(train_dataset)
+    # train_dataset = ShufflerIterDataPipe(train_dataset)
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=True,
         # persistent_workers=True, num_workers=os.cpu_count()
     )
-    validation_dataset = ShufflerIterDataPipe(validation_dataset)
+    # validation_dataset = ShufflerIterDataPipe(validation_dataset)
     validation_dataloader = torch.utils.data.DataLoader(
         validation_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn,
         drop_last=False,
@@ -904,7 +904,7 @@ def main():
         unet, optimizer, train_dataloader, validation_dataloader, lr_scheduler
     )
     # print(f"After accelerate prepare: {train_dataloader.dataset._shuffle_enabled}")
-    torch.utils.data.graph_settings.apply_shuffle_settings(train_dataloader.dataset, shuffle=True)
+    # torch.utils.data.graph_settings.apply_shuffle_settings(train_dataloader.dataset, shuffle=True)
 
     if args.use_ema:
         ema_unet.to(accelerator.device)
